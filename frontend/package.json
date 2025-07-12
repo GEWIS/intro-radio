@@ -1,4 +1,15 @@
 {
   "name": "radioweb",
-  "packageManager": "yarn@4.9.1"
+  "version": "0.0.1",
+  "description": "Frontend for the GEWIS Radio.",
+  "packageManager": "yarn@4.9.1",
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GEWIS/radioweb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GEWIS/radioweb/issues"
+  },
+  "homepage": "https://github.com/GEWIS/radioweb#readme"
 }
