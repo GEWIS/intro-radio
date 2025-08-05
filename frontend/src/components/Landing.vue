@@ -8,11 +8,14 @@
         <h1 class="text-h3 font-weight-bold gloria-hallelujah-regular">Intro Radio</h1>
       </div>
 
-      <VideoStream src="https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8" class="mb-8"/>
 
       <v-row>
         <v-col cols="12">
           <AudioStream base-url="http://rhm1.de:8000"  mount-point="/listen.aac"/>
+        </v-col>
+
+        <v-col cols="12">
+          <VideoStream src="https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8" class="mb-8"/>
         </v-col>
 
         <v-col cols="12">
