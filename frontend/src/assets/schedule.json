@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Slap Gelul",
+    "subtitle": "Good start of the day",
+    "icon": "mdi-bullhorn-variant",
+    "iconColor": "red",
+    "color": "#FFEBEE",
+    "date": "2025-08-18",
+    "time": "10:00 - 11:30"
+  },
+  {
+    "title": "Centurion Marathon",
+    "subtitle": "Beer activity for the brave.",
+    "icon": "mdi-beer",
+    "iconColor": "amber",
+    "color": "#FFF8E1",
+    "date": "2025-08-19",
+    "time": "16:00 - 20:00"
+  }
+]

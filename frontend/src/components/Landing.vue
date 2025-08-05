@@ -4,23 +4,19 @@
       <v-img class="mb-4" height="150" src="@/assets/logo.png" />
 
       <div class="mb-8 text-center">
-        <div class="text-body-2 font-weight-light mb-n1">Welcome to</div>
-        <h1 class="text-h2 font-weight-bold">Intro Radio</h1>
+        <div class="text-body-1 font-weight-light mb-n1 gloria-hallelujah-regular">Welcome to</div>
+        <h1 class="text-h3 font-weight-bold gloria-hallelujah-regular">Intro Radio</h1>
       </div>
+
+      <VideoStream src="https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8" class="mb-8"/>
 
       <v-row>
         <v-col cols="12">
-          <v-card
-            class="py-4"
-            color="primary"
-            prepend-icon="mdi-play-circle-outline"
-            rounded="lg"
-            v-ripple
-          >
-            <template #title>
-              <h2 class="text-h5 font-weight-bold">Click to start listening!</h2>
-            </template>
-          </v-card>
+          <AudioStream base-url="http://rhm1.de:8000"  mount-point="/listen.aac"/>
+        </v-col>
+
+        <v-col cols="12">
+          <UpcomingEvents />
         </v-col>
 
         <v-col v-for="link in links" :key="link.href" cols="12">
@@ -29,14 +25,28 @@
             class="py-4"
             color="surface-variant"
             :href="link.href"
-            :prepend-icon="link.icon"
             rel="noopener noreferrer"
             rounded="lg"
             :subtitle="link.subtitle"
             target="_blank"
             :title="link.title"
             variant="tonal"
-          />
+          >
+            <template #prepend>
+              <div
+                v-if="link.image"
+                class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center"
+              >
+                <v-img
+                  :src="link.image"
+                  width="32"
+                  height="32"
+                  class="object-cover"
+                />
+              </div>
+              <v-icon v-else :icon="link.icon" />
+            </template>
+          </v-card>
         </v-col>
       </v-row>
     </div>
@@ -46,12 +56,6 @@
 <script setup lang="ts">
 const links = [
   {
-    href: 'https://vuetifyjs.com/introduction/why-vuetify/#feature-guides',
-    icon: 'mdi-star-circle-outline',
-    subtitle: 'View the schedule of the radio.',
-    title: 'Radio Schedule',
-  },
-  {
     href: 'https://intro.gewis.nl/',
     icon: 'mdi-text-box-outline',
     subtitle: 'View the schedule intro program.',
@@ -59,7 +63,7 @@ const links = [
   },
   {
     href: 'https://gewis.nl/',
-    icon: 'mdi-widgets-outline',
+    image: 'https://gewis.nl/corporateidentity/public/logo/PNG/Base_Logo_Black.png',
     subtitle: 'Find the latest photos and information about GEWIS.',
     title: 'GEWIS Website',
   },

@@ -3237,6 +3237,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"hls.js@npm:^1.6.8":
+  version: 1.6.8
+  resolution: "hls.js@npm:1.6.8"
+  checksum: 10c0/529148c53deac1b886ad14bd8828a59d503d7d643c3823ece83487cb55867198823078b92be7548c45bd2a180776a0ffdded28d05a5a823a7b58b8e80f6626d4
+  languageName: node
+  linkType: hard
+
 "hookable@npm:^5.5.3":
   version: 5.5.3
   resolution: "hookable@npm:5.5.3"
@@ -4625,6 +4632,7 @@ __metadata:
     "@vue/tsconfig": "npm:^0.7.0"
     eslint: "npm:^9.23.0"
     eslint-config-vuetify: "npm:^4.0.0"
+    hls.js: "npm:^1.6.8"
     npm-run-all2: "npm:^7.0.2"
     pinia: "npm:^3.0.1"
     prettier: "npm:^3.6.2"

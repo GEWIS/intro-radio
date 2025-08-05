@@ -9,8 +9,13 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppFooter: typeof import('./components/AppFooter.vue')['default']
+    AudioStream: typeof import('./components/AudioStream.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
+    Landing: typeof import('./components/Landing.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    UpcomingEvents: typeof import('./components/UpcomingEvents.vue')['default']
+    UpcommingEvents: typeof import('./components/UpcommingEvents.vue')['default']
+    VideoStream: typeof import('./components/VideoStream.vue')['default']
   }
 }
