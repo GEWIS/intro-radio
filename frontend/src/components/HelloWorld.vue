@@ -5,37 +5,25 @@
 
       <div class="mb-8 text-center">
         <div class="text-body-2 font-weight-light mb-n1">Welcome to</div>
-        <h1 class="text-h2 font-weight-bold">Vuetify</h1>
+        <h1 class="text-h2 font-weight-bold">Intro Radio</h1>
       </div>
 
       <v-row>
         <v-col cols="12">
           <v-card
             class="py-4"
-            color="surface-variant"
-            image="https://cdn.vuetifyjs.com/docs/images/one/create/feature.png"
-            prepend-icon="mdi-rocket-launch-outline"
+            color="primary"
+            prepend-icon="mdi-play-circle-outline"
             rounded="lg"
-            variant="tonal"
+            v-ripple
           >
-            <template #image>
-              <v-img position="top right" />
-            </template>
-
             <template #title>
-              <h2 class="text-h5 font-weight-bold">Get started</h2>
-            </template>
-
-            <template #subtitle>
-              <div class="text-subtitle-1">
-                Change this page by updating <v-kbd>{{ `<HelloWorld />` }}</v-kbd> in
-                <v-kbd>components/HelloWorld.vue</v-kbd>.
-              </div>
+              <h2 class="text-h5 font-weight-bold">Click to start listening!</h2>
             </template>
           </v-card>
         </v-col>
 
-        <v-col v-for="link in links" :key="link.href" cols="6">
+        <v-col v-for="link in links" :key="link.href" cols="12">
           <v-card
             append-icon="mdi-open-in-new"
             class="py-4"
@@ -58,28 +46,28 @@
 <script setup lang="ts">
 const links = [
   {
-    href: 'https://vuetifyjs.com/',
-    icon: 'mdi-text-box-outline',
-    subtitle: 'Learn about all things Vuetify in our documentation.',
-    title: 'Documentation',
-  },
-  {
     href: 'https://vuetifyjs.com/introduction/why-vuetify/#feature-guides',
     icon: 'mdi-star-circle-outline',
-    subtitle: 'Explore available framework Features.',
-    title: 'Features',
+    subtitle: 'View the schedule of the radio.',
+    title: 'Radio Schedule',
   },
   {
-    href: 'https://vuetifyjs.com/components/all',
+    href: 'https://intro.gewis.nl/',
+    icon: 'mdi-text-box-outline',
+    subtitle: 'View the schedule intro program.',
+    title: 'Intro schedule',
+  },
+  {
+    href: 'https://gewis.nl/',
     icon: 'mdi-widgets-outline',
-    subtitle: 'Discover components in the API Explorer.',
-    title: 'Components',
+    subtitle: 'Find the latest photos and information about GEWIS.',
+    title: 'GEWIS Website',
   },
   {
     href: 'https://discord.vuetifyjs.com',
     icon: 'mdi-account-group-outline',
-    subtitle: 'Connect with Vuetify developers.',
-    title: 'Community',
+    subtitle: 'Common soon...',
+    title: 'Radio chat',
   },
 ];
 </script>
