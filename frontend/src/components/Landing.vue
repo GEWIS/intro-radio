@@ -22,6 +22,15 @@
           <UpcomingEvents />
         </v-col>
 
+        <v-col cols="12">
+          <RadioChat v-if="chatActive" />
+          <v-card v-else class="pa-4" color="surface-variant" rounded="lg" variant="tonal" title="Radio chat" subtitle="Start a chat with the radio" @click="startChatFlow">
+            <template #prepend>
+              <v-icon icon="mdi-account-group-outline" />
+            </template>
+          </v-card>
+        </v-col>
+
         <v-col v-for="link in links" :key="link.href" cols="12">
           <v-card
             append-icon="mdi-open-in-new"
@@ -57,6 +66,17 @@
 </template>
 
 <script setup lang="ts">
+const chatActive = ref(false);
+const showToast = ref(false);
+
+function startChatFlow() {
+  showToast.value = true;
+  setTimeout(() => {
+    showToast.value = false;
+    chatActive.value = true;
+  }, 1000); // simulate auth delay
+}
+
 const links = [
   {
     href: 'https://intro.gewis.nl/',
@@ -69,12 +89,6 @@ const links = [
     image: 'https://gewis.nl/corporateidentity/public/logo/PNG/Base_Logo_Black.png',
     subtitle: 'Find the latest photos and information about GEWIS.',
     title: 'GEWIS Website',
-  },
-  {
-    href: 'https://discord.vuetifyjs.com',
-    icon: 'mdi-account-group-outline',
-    subtitle: 'Common soon...',
-    title: 'Radio chat',
-  },
+  }
 ];
 </script>
