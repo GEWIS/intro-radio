@@ -84,6 +84,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/v1/, ''),
       },
+      '/ws': {
+        target: PROXY_URL + '/ws',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/ws/, ''),
+      },
     },
   },
   css: {

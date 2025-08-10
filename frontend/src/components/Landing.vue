@@ -66,8 +66,9 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onBeforeMount } from 'vue';
+
 const chatActive = ref(false);
-const showToast = ref(false);
 
 onBeforeMount(fetchRadioInfo);
 
@@ -79,15 +80,25 @@ interface RadioInfoResponse {
 
 const radioInfo = ref<RadioInfoResponse>();
 
+// Check for token in URL and store in localStorage
+const params = new URLSearchParams(window.location.search);
+const tokenParam = params.get('token');
+if (tokenParam) {
+  localStorage.setItem('token', tokenParam);
+  chatActive.value = true;
+
+  // Remove ?token=... from the URL without reloading
+  const newUrl = window.location.origin + window.location.pathname + window.location.hash;
+  window.history.replaceState({}, document.title, newUrl);
+}
+
 async function fetchRadioInfo() {
   const res = await fetch('api/v1/radio');
   radioInfo.value = await res.json();
 }
 
 function startChatFlow() {
-  showToast.value = true;
   setTimeout(() => {
-    showToast.value = false;
     chatActive.value = true;
   }, 1000); // simulate auth delay
 }

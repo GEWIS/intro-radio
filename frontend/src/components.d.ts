@@ -8,8 +8,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminChat: typeof import('./components/AdminChat.vue')['default']
     AppFooter: typeof import('./components/AppFooter.vue')['default']
     AudioStream: typeof import('./components/AudioStream.vue')['default']
+    BackOffice: typeof import('./components/BackOffice.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
     Landing: typeof import('./components/Landing.vue')['default']
     PrivacyPolicy: typeof import('./components/PrivacyPolicy.vue')['default']

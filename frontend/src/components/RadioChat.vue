@@ -1,29 +1,73 @@
 <template>
   <v-card class="pa-4" color="surface-variant" rounded="lg" variant="tonal">
     <div ref="chatBox" style="height: 300px; overflow-y: auto">
-      <div v-for="(msg, index) in messages" :key="index">
-        <strong>{{ msg.from === 'radio' ? 'Radio' : 'You' }}:</strong>
-        {{ msg.content }}
-      </div>
+      <template v-if="!isClosed">
+        <div v-for="(msg, index) in messages" :key="index">
+          <strong>{{ msg.from === 'radio' ? 'Radio' : 'You' }}:</strong>
+          {{ msg.content }}
+        </div>
+      </template>
+
+      <template v-else>
+        <div
+          class="d-flex flex-column align-center justify-center text-center"
+          style="height: 100%;"
+        >
+          <div class="text-h6 mb-1">Whoops, something went wrong!</div>
+          <div class="text-body-2">did you log in in another tab?</div>
+        </div>
+      </template>
     </div>
 
-    <v-text-field v-model="input" placeholder="Type your message..." @keydown.enter="send" class="mt-2" />
+    <v-text-field
+      v-model="input"
+      :disabled="isClosed"
+      placeholder="Type your message..."
+      @keydown.enter="send"
+      class="mt-2"
+    />
 
-    <v-btn @click="send" color="primary" block>Send</v-btn>
+    <v-btn
+      v-if="!isClosed"
+      @click="send"
+      color="primary"
+      block
+    >Send</v-btn>
+
+    <v-btn
+      v-else
+      @click="connect"
+      color="secondary"
+      block
+    >Reconnect</v-btn>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, onBeforeUnmount, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 
 const input = ref('');
 const messages = ref<{ from: string; content: string }[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
+const isClosed = ref(false);
 
 let socket: WebSocket | null = null;
+const token = localStorage.getItem('token') || '';
 
 function connect() {
-  socket = new WebSocket('ws://localhost:8080/ws?role=user');
+  if (socket) socket.close();
+  if (!token) {
+    console.error('No token found in localStorage');
+    return;
+  }
+
+  socket = new WebSocket('ws://' + window.location.host + '/ws?role=user');
+
+  socket.onopen = () => {
+    isClosed.value = false;
+    // Send handshake with token
+    socket?.send(JSON.stringify({ token }));
+  };
 
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -32,15 +76,17 @@ function connect() {
   };
 
   socket.onclose = () => {
+    isClosed.value = true;
+    messages.value = [];
     console.log('Socket closed');
   };
 }
 
 function send() {
-  if (!input.value.trim() || !socket) return;
+  if (!input.value.trim() || !socket || isClosed.value) return;
 
   const content = input.value.trim();
-  socket.send(JSON.stringify({ content }));
+  socket.send(JSON.stringify({ token, content }));
   messages.value.push({ from: 'you', content });
   input.value = '';
   scrollToBottom();
