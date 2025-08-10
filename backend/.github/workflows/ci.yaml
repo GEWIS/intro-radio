@@ -9,22 +9,17 @@ on:
       - master
 
 jobs:
-  check:
-    name: "Run CI"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-      - uses: dominikh/staticcheck-action@v1
-        with:
-          version: "latest"
-      - uses: Jerome1337/gofmt-action@v1.0.5
-        with:
-          gofmt-path: '.'
+  build-and-lint:
+    uses: GEWIS/actions/.github/workflows/lint-and-build-go.yml@v1
+    with:
+      go-version: "^1.24.0"
+      lint: true
+      format: true
+      build: true
+      test: true
 
   dockerize:
-    needs: check
+    needs: build-and-lint
     uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
     with:
       projects: '["."]'
