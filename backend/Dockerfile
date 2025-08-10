@@ -10,6 +10,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /radiogaga
 
 FROM alpine
 
-COPY --from=builder /webhooker /radioagga
+COPY --from=builder /radiogaga /radiogaga
 
 CMD ["/radiogaga"]
