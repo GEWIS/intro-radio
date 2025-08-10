@@ -10,12 +10,12 @@
 
 
       <v-row>
-        <v-col cols="12">
-          <AudioStream base-url="http://rhm1.de:8000"  mount-point="/listen.aac"/>
+        <v-col cols="12" v-if="radioInfo">
+          <AudioStream :base-url="radioInfo.audioUrl" :mount-point="radioInfo.audioMountPoint" />
         </v-col>
 
-        <v-col cols="12">
-          <VideoStream src="https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8" class="mb-8"/>
+        <v-col cols="12" v-if="radioInfo">
+          <VideoStream :src="radioInfo.videoUrl" class="mb-8" />
         </v-col>
 
         <v-col cols="12">
@@ -68,6 +68,21 @@
 <script setup lang="ts">
 const chatActive = ref(false);
 const showToast = ref(false);
+
+onBeforeMount(fetchRadioInfo);
+
+interface RadioInfoResponse {
+  videoUrl: string;
+  audioUrl: string;
+  audioMountPoint: string;
+}
+
+const radioInfo = ref<RadioInfoResponse>();
+
+async function fetchRadioInfo() {
+  const res = await fetch('api/v1/radio');
+  radioInfo.value = await res.json();
+}
 
 function startChatFlow() {
   showToast.value = true;

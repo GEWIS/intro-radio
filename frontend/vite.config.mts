@@ -12,6 +12,8 @@ import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify';
 import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 
+const PROXY_URL = 'http://localhost:8080';
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -76,6 +78,13 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    proxy: {
+      '/api/v1': {
+        target: PROXY_URL + '/api/v1',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/v1/, ''),
+      },
+    },
   },
   css: {
     preprocessorOptions: {
