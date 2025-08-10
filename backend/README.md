@@ -54,5 +54,3 @@ Messages are JSON objects:
 
 * For `role=user`, omit the `to` field to broadcast to all radio staff.
 * For `role=radio`, `to` must be the user ID (the server uses their remote address as ID).
-
-```
