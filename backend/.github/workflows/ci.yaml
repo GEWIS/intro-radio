@@ -1,4 +1,4 @@
-name: Docker Build
+name: CI
 
 on:
   push:
@@ -22,3 +22,9 @@ jobs:
       - uses: Jerome1337/gofmt-action@v1.0.5
         with:
           gofmt-path: '.'
+
+  dockerize:
+    needs: check
+    uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
+    with:
+      projects: '["."]'
