@@ -7,15 +7,19 @@ import (
 )
 
 type RadioInfo struct {
-	VideoURL string `json:"videoUrl"`
-	AudioURL string `json:"audioUrl"`
+	VideoURL        string `json:"videoUrl"`
+	AudioURL        string `json:"audioUrl"`
+	AudioMountPoint string `json:"audioMountPoint"`
 }
 
-func main() {
-	port := String("PORT", ":8080")
-	videoURL := String("RADIO_VIDEO_URL", "https://example.com/video")
-	audioURL := String("RADIO_AUDIO_URL", "https://example.com/audio")
+var (
+	port            = String("PORT", ":8080")
+	videoURL        = String("RADIO_VIDEO_URL", "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8")
+	audioURL        = String("RADIO_AUDIO_URL", "http://rhm1.de:8000")
+	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/listen.aac")
+)
 
+func main() {
 	chat := NewChat()
 
 	http.HandleFunc("/ws", chat.HandleWS)
@@ -29,8 +33,9 @@ func main() {
 	http.HandleFunc("/api/v1/radio", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(RadioInfo{
-			VideoURL: videoURL,
-			AudioURL: audioURL,
+			VideoURL:        videoURL,
+			AudioURL:        audioURL,
+			AudioMountPoint: audioMountPoint,
 		})
 	})
 
