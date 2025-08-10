@@ -12,6 +12,7 @@ declare module 'vue' {
     AudioStream: typeof import('./components/AudioStream.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
     Landing: typeof import('./components/Landing.vue')['default']
+    PrivacyPolicy: typeof import('./components/PrivacyPolicy.vue')['default']
     RadioChat: typeof import('./components/RadioChat.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
