@@ -44,7 +44,7 @@ func makeToken(t *testing.T, secret string, lidnr int, given, family string, ttl
 	return s
 }
 
-func dialAndHandshake(t *testing.T, wsBase string, role string, token string) *websocket.Conn {
+func dialAndHandshake(t *testing.T, wsBase string, role string, token string, radioKey string) *websocket.Conn {
 	t.Helper()
 	u, _ := url.Parse(wsBase)
 	q := u.Query()
@@ -60,8 +60,14 @@ func dialAndHandshake(t *testing.T, wsBase string, role string, token string) *w
 	}
 
 	// First frame is the handshake message the server expects
-	if err := c.WriteJSON(IncomingMessage{Token: token}); err != nil {
-		t.Fatalf("write handshake: %v", err)
+	if role == "radio" {
+		if err := c.WriteJSON(IncomingMessage{Token: token, RadioKey: radioKey}); err != nil {
+			t.Fatalf("write radio handshake: %v", err)
+		}
+	} else {
+		if err := c.WriteJSON(IncomingMessage{Token: token}); err != nil {
+			t.Fatalf("write handshake: %v", err)
+		}
 	}
 	return c
 }
@@ -85,6 +91,7 @@ func readJSONWithDeadline[T any](t *testing.T, c *websocket.Conn, d time.Duratio
 
 func TestUserToRadioForwarding(t *testing.T) {
 	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
 	chat := NewChat()
 
 	srv, wsBase := startTestServer(t, chat)
@@ -93,10 +100,10 @@ func TestUserToRadioForwarding(t *testing.T) {
 	userTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
 	radioTok := makeToken(t, GEWISSecret, 99999, "Bob", "Radio", time.Minute)
 
-	radio := dialAndHandshake(t, wsBase, "radio", radioTok)
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
 
-	user := dialAndHandshake(t, wsBase, "user", userTok)
+	user := dialAndHandshake(t, wsBase, "user", userTok, "")
 	defer user.Close()
 
 	// Send from user -> expect radio to receive
@@ -116,6 +123,7 @@ func TestUserToRadioForwarding(t *testing.T) {
 
 func TestRadioToUserForwarding(t *testing.T) {
 	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
 	chat := NewChat()
 
 	srv, wsBase := startTestServer(t, chat)
@@ -124,10 +132,10 @@ func TestRadioToUserForwarding(t *testing.T) {
 	userTok := makeToken(t, GEWISSecret, 22222, "Carol", "User", time.Minute)
 	radioTok := makeToken(t, GEWISSecret, 33333, "Dave", "Radio", time.Minute)
 
-	user := dialAndHandshake(t, wsBase, "user", userTok)
+	user := dialAndHandshake(t, wsBase, "user", userTok, "")
 	defer user.Close()
 
-	radio := dialAndHandshake(t, wsBase, "radio", radioTok)
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
 
 	// Send from radio to user 22222
@@ -155,7 +163,7 @@ func TestReconnectKicksOldWith4100(t *testing.T) {
 	tok := makeToken(t, GEWISSecret, 77777, "Eve", "User", time.Minute)
 
 	// First connection for lidnr 77777
-	c1 := dialAndHandshake(t, wsBase, "user", tok)
+	c1 := dialAndHandshake(t, wsBase, "user", tok, "")
 	defer c1.Close()
 
 	// Start a waiter that expects the close from server with code 4100
@@ -166,7 +174,7 @@ func TestReconnectKicksOldWith4100(t *testing.T) {
 	}()
 
 	// Second connection with the same lidnr triggers kick of c1
-	c2 := dialAndHandshake(t, wsBase, "user", tok)
+	c2 := dialAndHandshake(t, wsBase, "user", tok, "")
 	defer c2.Close()
 
 	select {
