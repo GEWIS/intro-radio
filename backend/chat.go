@@ -132,7 +132,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	c.mutex.Unlock()
 
-	log.Info().Str("role", role).Str("id", client.id).Msg("Client connected")
+	log.Info().Str("role", role).Str("id", client.id).Str("Role", client.role).Msg("Client connected")
 
 	// Handshake frame should not be broadcast unless it contains data
 	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
