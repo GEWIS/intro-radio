@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,8 +119,10 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Str("role", role).Str("id", client.id).Msg("Client connected")
 
-	// Process the first message immediately (optional but handy)
-	c.dispatch(client, first, claims)
+	// Handshake frame should not be broadcast unless it contains data
+	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
+		c.dispatch(client, first, claims)
+	}
 
 	// Continue with normal loop
 	go c.handleClient(client)
