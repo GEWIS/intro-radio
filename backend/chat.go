@@ -21,9 +21,10 @@ type Client struct {
 }
 
 type IncomingMessage struct {
-	Token   string `json:"token"`        // required on every message
-	To      string `json:"to,omitempty"` // target user id when role=radio
-	Content string `json:"content"`      // message body
+	Token    string `json:"token"`              // required on every message
+	To       string `json:"to,omitempty"`       // target user id when role=radio
+	Content  string `json:"content"`            // message body
+	RadioKey string `json:"radioKey,omitempty"` // required in handshake when role=radio
 }
 
 type OutgoingMessage struct {
@@ -42,7 +43,8 @@ type GEWISClaims struct {
 }
 
 var (
-	GEWISSecret = String("GEWIS_SECRET", "ChangeMe")
+	GEWISSecret  = String("GEWIS_SECRET", "ChangeMe")
+	RADIOChatKey = String("RADIO_CHAT_KEY", "ChangeMe")
 )
 
 type Chat struct {
@@ -92,6 +94,19 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
+
+	if role == "radio" {
+		if RADIOChatKey == "" || first.RadioKey != RADIOChatKey {
+			_ = conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(4103, "invalid radio key"),
+				time.Now().Add(time.Second),
+			)
+			_ = conn.Close()
+			return
+		}
+	}
+
 	lid := strconv.Itoa(claims.Lidnr)
 
 	client := &Client{
