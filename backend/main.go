@@ -15,8 +15,8 @@ type RadioInfo struct {
 var (
 	port            = String("PORT", ":8080")
 	videoURL        = String("RADIO_VIDEO_URL", "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8")
-	audioURL        = String("RADIO_AUDIO_URL", "http://rhm1.de:8000")
-	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/listen.aac")
+	audioURL        = String("RADIO_AUDIO_URL", "https://fr1.streamhosting.ch")
+	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/lounge64.aac")
 )
 
 func main() {
