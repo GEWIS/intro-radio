@@ -2,19 +2,17 @@
   <v-card class="pa-4 comic-outline" color="surface" rounded="lg">
     <div v-if="isMobile && !started" class="d-flex flex-column align-center py-8">
       <v-btn
-        color="primary"
-        prepend-icon="mdi-play-circle-outline"
-        elevation="4"
-        size="large"
-        rounded="pill"
         class="mb-2"
+        color="primary"
+        elevation="4"
+        prepend-icon="mdi-play-circle-outline"
+        rounded="pill"
+        size="large"
         @click="startStream"
       >
         Start Video Stream
       </v-btn>
-      <div class="text-caption text-secondary font-weight-medium">
-        Video streaming may use significant data
-      </div>
+      <div class="text-caption text-secondary font-weight-medium">Video streaming may use significant data</div>
     </div>
     <video
       v-else
@@ -22,56 +20,56 @@
       autoplay
       muted
       playsinline
-      style="width: 100%; border-radius: 8px;"
       :poster="poster"
+      style="width: 100%; border-radius: 8px"
       title="Radio Livestream"
     />
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
-import Hls from 'hls.js'
+import Hls from 'hls.js';
+import { computed, onMounted, ref } from 'vue';
 
 const props = defineProps<{
-  src: string
-  poster?: string
-}>()
+  src: string;
+  poster?: string;
+}>();
 
-const video = ref<HTMLVideoElement | null>(null)
-const started = ref(false)
+const video = ref<HTMLVideoElement | null>(null);
+const started = ref(false);
 
 const isMobile = computed(() =>
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-)
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+);
 
 function startStream() {
-  started.value = true
+  started.value = true;
   // Wait for next tick to ensure video element is rendered
   setTimeout(() => {
-    setupStream()
-  })
+    setupStream();
+  });
 }
 
 function setupStream() {
   if (video.value) {
     if (Hls.isSupported()) {
-      const hls = new Hls()
-      hls.loadSource(props.src)
-      hls.attachMedia(video.value)
+      const hls = new Hls();
+      hls.loadSource(props.src);
+      hls.attachMedia(video.value);
     } else if (video.value.canPlayType('application/vnd.apple.mpegurl')) {
-      video.value.src = props.src
+      video.value.src = props.src;
     }
-    video.value.play().catch(() => {})
+    video.value.play().catch(() => {});
   }
 }
 
 onMounted(() => {
   if (!isMobile.value) {
-    started.value = true
-    setupStream()
+    started.value = true;
+    setupStream();
   }
-})
+});
 </script>
 <style scoped>
 .comic-outline {

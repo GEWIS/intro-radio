@@ -8,14 +8,13 @@
         <h1 class="text-h3 font-weight-bold gloria-hallelujah-regular">Intro Radio</h1>
       </div>
 
-
       <v-row>
-        <v-col cols="12" v-if="radioInfo">
+        <v-col v-if="radioInfo" cols="12">
           <AudioStream :base-url="radioInfo.audioUrl" :mount-point="radioInfo.audioMountPoint" />
         </v-col>
 
-        <v-col cols="12" v-if="radioInfo">
-          <VideoStream :src="radioInfo.videoUrl" class="mb-8" />
+        <v-col v-if="radioInfo" cols="12">
+          <VideoStream class="mb-8" :src="radioInfo.videoUrl" />
         </v-col>
 
         <v-col cols="12">
@@ -24,7 +23,16 @@
 
         <v-col cols="12">
           <RadioChat v-if="chatActive" />
-          <v-card v-else class="pa-4" color="surface-variant" rounded="lg" variant="tonal" title="Radio chat" subtitle="Start a chat with the radio" @click="startChatFlow">
+          <v-card
+            v-else
+            class="pa-4"
+            color="surface-variant"
+            rounded="lg"
+            subtitle="Start a chat with the radio"
+            title="Radio chat"
+            variant="tonal"
+            @click="startChatFlow"
+          >
             <template #prepend>
               <v-icon icon="mdi-account-group-outline" />
             </template>
@@ -45,16 +53,8 @@
             variant="tonal"
           >
             <template #prepend>
-              <div
-                v-if="link.image"
-                class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center"
-              >
-                <v-img
-                  :src="link.image"
-                  width="32"
-                  height="32"
-                  class="object-cover"
-                />
+              <div v-if="link.image" class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+                <v-img class="object-cover" height="32" :src="link.image" width="32" />
               </div>
               <v-icon v-else :icon="link.icon" />
             </template>
@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount } from 'vue';
+import { onBeforeMount, ref } from 'vue';
 
 const chatActive = ref(false);
 
@@ -115,6 +115,6 @@ const links = [
     image: 'https://gewis.nl/corporateidentity/public/logo/PNG/Base_Logo_Black.png',
     subtitle: 'Find the latest photos and information about GEWIS.',
     title: 'GEWIS Website',
-  }
+  },
 ];
 </script>

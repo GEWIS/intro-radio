@@ -9,10 +9,7 @@
       </template>
 
       <template v-else>
-        <div
-          class="d-flex flex-column align-center justify-center text-center"
-          style="height: 100%;"
-        >
+        <div class="d-flex flex-column align-center justify-center text-center" style="height: 100%">
           <div class="text-h6 mb-1">Whoops, something went wrong!</div>
           <div class="text-body-2">did you log in in another tab?</div>
         </div>
@@ -21,30 +18,20 @@
 
     <v-text-field
       v-model="input"
+      class="mt-2"
       :disabled="isClosed"
       placeholder="Type your message..."
       @keydown.enter="send"
-      class="mt-2"
     />
 
-    <v-btn
-      v-if="!isClosed"
-      @click="send"
-      color="primary"
-      block
-    >Send</v-btn>
+    <v-btn v-if="!isClosed" block color="primary" @click="send">Send</v-btn>
 
-    <v-btn
-      v-else
-      @click="connect"
-      color="secondary"
-      block
-    >Reconnect</v-btn>
+    <v-btn v-else block color="secondary" @click="connect">Reconnect</v-btn>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const input = ref('');
 const messages = ref<{ from: string; content: string }[]>([]);
@@ -63,23 +50,23 @@ function connect() {
 
   socket = new WebSocket('ws://' + window.location.host + '/ws?role=user');
 
-  socket.onopen = () => {
+  socket.addEventListener('open', () => {
     isClosed.value = false;
     // Send handshake with token
     socket?.send(JSON.stringify({ token }));
-  };
+  });
 
-  socket.onmessage = (event) => {
+  socket.addEventListener('message', (event: MessageEvent) => {
     const msg = JSON.parse(event.data);
     messages.value.push({ from: 'radio', content: msg.content });
     scrollToBottom();
-  };
+  });
 
-  socket.onclose = () => {
+  socket.addEventListener('close', () => {
     isClosed.value = true;
     messages.value = [];
     console.log('Socket closed');
-  };
+  });
 }
 
 function send() {

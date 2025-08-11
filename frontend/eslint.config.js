@@ -1,12 +1,10 @@
-import vuetify from 'eslint-config-vuetify';
-import { eslintConfig as common } from '@gewis/eslint-config-typescript';
 import { eslintConfig as prettier } from '@gewis/prettier-config';
+import vuetify from 'eslint-config-vuetify';
 
-export default [
-  ...common,
-  prettier,
-  ...vuetify,
+export default vuetify(
   {
-    ignores: ['src/client/**', 'dist/**', 'test/**', 'openapi-ts.config.ts', 'vitest.config.ts'],
+    vue: true,
   },
-];
+  prettier,
+  { ignores: ['src/typed-router.d.ts', 'src/components.d.ts', 'src/auto-imports.d.ts'] },
+);

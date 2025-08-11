@@ -2,11 +2,11 @@
   <div>
     <audio ref="audio" :src="nativeSupported ? streamUrl : undefined" style="display: none" />
     <v-card
+      v-ripple
       class="py-4"
       color="primary"
       :prepend-icon="isPlaying ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'"
       rounded="lg"
-      v-ripple
       @click="isPlaying ? stop() : play()"
     >
       <template #title>
@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 const props = defineProps<{
   baseUrl: string;
@@ -78,7 +78,7 @@ function play() {
   audio.value.play();
   isPlaying.value = true;
   fetchCurrentlyPlaying();
-  statsInterval = setInterval(fetchCurrentlyPlaying, 15000);
+  statsInterval = setInterval(fetchCurrentlyPlaying, 15_000);
   switchInterval = setInterval(() => {
     showListeners.value = !showListeners.value;
   }, 4000);
@@ -103,11 +103,7 @@ function stop() {
 
 onMounted(() => {
   intervalId = setInterval(() => {
-    if (!isPlaying.value) {
-      showLive.value = !showLive.value;
-    } else {
-      showLive.value = false;
-    }
+    showLive.value = isPlaying.value ? false : !showLive.value;
   }, 1500);
 });
 

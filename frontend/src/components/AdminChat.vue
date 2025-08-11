@@ -1,23 +1,23 @@
 <template>
-  <v-card class="p-2" color="surface-variant" variant="tonal" rounded="lg">
+  <v-card class="p-2" color="surface-variant" rounded="lg" variant="tonal">
     <v-row class="gap-0" no-gutters>
       <!-- Users list -->
-      <v-col cols="12" md="4" lg="3" class="pr-md-3 mb-4 mb-md-0">
-        <v-card flat class="h-100 p-2">
+      <v-col class="pr-md-3 mb-4 mb-md-0" cols="12" lg="3" md="4">
+        <v-card class="h-100 p-2" flat>
           <v-card-title class="p-2">Users</v-card-title>
           <v-divider />
-          <v-list class="overflow-y-auto p-2" style="height: calc(70vh - 80px);">
+          <v-list class="overflow-y-auto p-2" style="height: calc(70vh - 80px)">
             <v-list-item
               v-for="u in users"
               :key="u.id"
-              :title="`${u.givenName} ${u.familyName} (m${u.id})`"
-              :subtitle="formatLast(u.lastActivity)"
-              density="compact"
               :active="activeUser === u.id"
+              density="compact"
+              :subtitle="formatLast(u.lastActivity)"
+              :title="`${u.givenName} ${u.familyName} (m${u.id})`"
               @click="selectUser(u.id)"
             >
               <template #append>
-                <v-badge v-if="u.unread > 0" :content="u.unread" color="error" inline />
+                <v-badge v-if="u.unread > 0" color="error" :content="u.unread" inline />
               </template>
             </v-list-item>
           </v-list>
@@ -25,18 +25,22 @@
       </v-col>
 
       <!-- Chat panel -->
-      <v-col cols="12" md="8" lg="9" class="pl-md-3">
-        <v-card flat class="h-100 d-flex flex-column p-2">
+      <v-col class="pl-md-3" cols="12" lg="9" md="8">
+        <v-card class="h-100 d-flex flex-column p-2" flat>
           <v-card-title class="p-2 d-flex align-center justify-space-between">
             <div>
               <span class="font-weight-medium">Chat with:</span>
               <span class="ml-2">{{ activeUserTitle }}</span>
             </div>
-            <v-btn size="small" variant="text" @click="reconnect" :loading="connecting">Reconnect</v-btn>
+            <v-btn :loading="connecting" size="small" variant="text" @click="reconnect">Reconnect</v-btn>
           </v-card-title>
           <v-divider />
 
-          <div ref="messagesBox" class="flex-grow-1 overflow-y-auto py-2 px-2" style="min-height: 50vh; max-height: 70vh;">
+          <div
+            ref="messagesBox"
+            class="flex-grow-1 overflow-y-auto py-2 px-2"
+            style="min-height: 50vh; max-height: 70vh"
+          >
             <template v-if="!isClosed">
               <div v-for="(m, i) in activeMessages" :key="i" class="my-1">
                 <strong>[{{ m.from === 'radio' ? 'Radio' : usersMap[m.from]?.givenName || m.from }}]</strong>
@@ -44,7 +48,7 @@
               </div>
             </template>
             <template v-else>
-              <div class="d-flex flex-column align-center justify-center text-center" style="height: 50vh;">
+              <div class="d-flex flex-column align-center justify-center text-center" style="height: 50vh">
                 <div class="text-h6 mb-1">Whoops, something went wrong!</div>
                 <div class="text-body-2">did you log in in another tab?</div>
               </div>
@@ -55,13 +59,13 @@
             <v-text-field
               v-model="input"
               class="mr-2"
-              placeholder="Write a message"
-              :disabled="isClosed || !activeUser"
-              @keydown.enter="send"
-              hide-details
               density="comfortable"
+              :disabled="isClosed || !activeUser"
+              hide-details
+              placeholder="Write a message"
+              @keydown.enter="send"
             />
-            <v-btn color="primary" height="40" class="flex-shrink-0" @click="send" :disabled="isClosed || !activeUser">
+            <v-btn class="flex-shrink-0" color="primary" :disabled="isClosed || !activeUser" height="40" @click="send">
               Send
             </v-btn>
           </div>
@@ -72,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 type Outgoing = {
   from: string;
@@ -103,7 +107,7 @@ const users = computed<ChatUser[]>(() =>
     const an = `${a.givenName} ${a.familyName}`.trim();
     const bn = `${b.givenName} ${b.familyName}`.trim();
     return an.localeCompare(bn);
-  })
+  }),
 );
 
 const activeUser = ref<string | null>(null);
@@ -151,13 +155,13 @@ function connect() {
   connecting.value = true;
   ws = new WebSocket(`ws://${window.location.host}/ws?role=radio`);
 
-  ws.onopen = () => {
+  ws.addEventListener('open', () => {
     isClosed.value = false;
     ws?.send(JSON.stringify({ token: props.token, radioKey: props.radioKey }));
     connecting.value = false;
-  };
+  });
 
-  ws.onmessage = (evt) => {
+  ws.addEventListener('message', (evt: MessageEvent) => {
     const msg = JSON.parse(evt.data) as Outgoing;
     const from = msg.from;
 
@@ -177,16 +181,18 @@ function connect() {
     }
 
     scrollToBottom();
-  };
+  });
 
-  ws.onclose = () => {
+  ws.addEventListener('close', () => {
     isClosed.value = true;
     connecting.value = false;
-  };
+  });
 }
 
 function reconnect() {
-  try { ws?.close(); } catch {}
+  try {
+    ws?.close();
+  } catch {}
   connect();
 }
 

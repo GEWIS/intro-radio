@@ -1,16 +1,16 @@
 // Plugins
-import AutoImport from 'unplugin-auto-import/vite';
-import Components from 'unplugin-vue-components/vite';
-import Fonts from 'unplugin-fonts/vite';
-import Layouts from 'vite-plugin-vue-layouts-next';
+import { fileURLToPath, URL } from 'node:url';
 import Vue from '@vitejs/plugin-vue';
-import VueRouter from 'unplugin-vue-router/vite';
+import AutoImport from 'unplugin-auto-import/vite';
+import Fonts from 'unplugin-fonts/vite';
+import Components from 'unplugin-vue-components/vite';
 import { VueRouterAutoImports } from 'unplugin-vue-router';
-import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify';
-
+import VueRouter from 'unplugin-vue-router/vite';
 // Utilities
 import { defineConfig } from 'vite';
-import { fileURLToPath, URL } from 'node:url';
+import Layouts from 'vite-plugin-vue-layouts-next';
+
+import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify';
 
 const PROXY_URL = 'http://localhost:8080';
 

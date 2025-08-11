@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="py-8">
+  <v-container class="py-8" fluid>
     <div class="mx-auto" style="max-width: 1400px">
       <div class="mb-6 text-center">
         <h1 class="text-h4 font-weight-bold gloria-hallelujah-regular">Backoffice</h1>
@@ -7,42 +7,43 @@
       </div>
 
       <!-- Loading token -->
-      <v-card v-if="stage === 'auth'" class="p-4" color="surface-variant" variant="tonal" rounded="lg">
+      <v-card v-if="stage === 'auth'" class="p-4" color="surface-variant" rounded="lg" variant="tonal">
         <v-skeleton-loader type="paragraph, actions" />
       </v-card>
-
+      
       <!-- Ask for admin key -->
-      <div class="d-flex flex-column align-center w-full" v-else-if="stage === 'need-key'">
-        <v-card class="px-4 py-4 w-50" color="surface-variant" variant="tonal" rounded="lg">
+      <div v-else-if="stage === 'need-key'" class="d-flex flex-column align-center w-full">
+        <v-card class="px-4 py-4 w-50" color="surface-variant" rounded="lg" variant="tonal">
           <div class="text-h6 mb-2">Admin login</div>
           <div class="text-body-2 mb-4">Enter your radio admin key</div>
 
-          <v-text-field
-            v-model="keyInput"
-            label="Admin key"
-            :disabled="validating"
-            :error="!!errorMsg"
-            :error-messages="errorMsg"
-            hide-details="auto"
-            class="mb-3"
-            @submit="validateKey"
-          />
-          <div class="w-full d-flex justify-end">
-          <v-btn :loading="validating" color="primary" @click="validateKey">Continue</v-btn>
-          </div>
+          <form @submit.prevent="validateKey">
+            <v-text-field
+              v-model="keyInput"
+              class="mb-3"
+              :disabled="validating"
+              :error="!!errorMsg"
+              :error-messages="errorMsg"
+              hide-details="auto"
+              label="Admin key"
+            />
+            <div class="w-full d-flex justify-end">
+              <v-btn color="primary" :loading="validating" type="submit">Continue</v-btn>
+            </div>
+          </form>
         </v-card>
       </div>
 
       <!-- Admin chat -->
-      <AdminChat v-else-if="stage === 'ready'" :token="token!" :radio-key="radioKey!" />
+      <AdminChat v-else-if="stage === 'ready'" :radio-key="radioKey!" :token="token!" />
     </div>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useGewisAuth } from '@/composables/useGewisAuth';
+import { onMounted, ref } from 'vue';
 import AdminChat from '@/components/AdminChat.vue';
+import { useGewisAuth } from '@/composables/useGewisAuth';
 
 type Stage = 'auth' | 'need-key' | 'ready';
 
@@ -94,48 +95,63 @@ async function validateKey() {
 }
 
 // Opens a WS as radio, sends handshake, and resolves true if the server does not close it immediately.
+// Opens a WS as radio, sends handshake, and resolves true if the server does not close it immediately.
 function validateRadioKeyQuick(tok: string, key: string): Promise<boolean> {
   return new Promise((resolve) => {
+    let settled = false;
+    let timer: number | null = null;
+
+    const safeResolve = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      // close is handled in cleanup
+      resolve(ok);
+    };
+
     try {
       const ws = new WebSocket(`ws://${window.location.host}/ws?role=radio`);
-      let closed = false;
-      let opened = false;
 
-      const cleanup = () => {
-        ws.onopen = null;
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.onmessage = null;
-      };
-
-      ws.onopen = () => {
-        opened = true;
+      const handleOpen = () => {
         ws.send(JSON.stringify({ token: tok, radioKey: key }));
-        // If it stays open for a short moment, assume valid
-        setTimeout(() => {
-          if (!closed) {
-            cleanup();
-            try {
-              ws.close();
-            } catch {}
-            resolve(true);
-          }
+        // If it stays open briefly, assume valid
+        timer = window.setTimeout(() => {
+          cleanup();
+          try {
+            ws.close();
+          } catch {}
+          safeResolve(true);
         }, 200);
       };
 
-      ws.onclose = () => {
-        closed = true;
+      const handleClose = () => {
         cleanup();
-        resolve(false);
+        safeResolve(false);
       };
 
-      ws.onerror = () => {
-        closed = true;
+      const handleError = () => {
         cleanup();
-        resolve(false);
+        safeResolve(false);
       };
+
+      const cleanup = () => {
+        ws.removeEventListener('open', handleOpen);
+        ws.removeEventListener('close', handleClose);
+        ws.removeEventListener('error', handleError);
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
+      ws.addEventListener('open', handleOpen);
+      ws.addEventListener('close', handleClose);
+      ws.addEventListener('error', handleError);
     } catch {
-      resolve(false);
+      safeResolve(false);
     }
   });
 }

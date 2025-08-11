@@ -47,6 +47,6 @@ async function makeMockToken(opts: {
     'sign',
   ]);
   const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-  const sigB64 = b64u(String.fromCharCode(...new Uint8Array(sigBuf)));
+  const sigB64 = b64u(String.fromCodePoint(...new Uint8Array(sigBuf)));
   return `${data}.${sigB64}`;
 }

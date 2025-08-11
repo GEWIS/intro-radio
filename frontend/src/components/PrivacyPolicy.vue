@@ -1,7 +1,7 @@
 <template>
   <v-dialog v-model="open" max-width="900">
     <template #activator="{ props }">
-      <v-btn v-bind="props" variant="text" size="small">Privacy policy</v-btn>
+      <v-btn v-bind="props" size="small" variant="text">Privacy policy</v-btn>
     </template>
 
     <v-card rounded="lg">
@@ -14,20 +14,20 @@
       <v-divider />
 
       <v-card-text>
-        <div v-html="html" class="markdown-body" />
+        <div class="markdown-body" v-html="html" />
       </v-card-text>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
-import policyMd from '@/assets/privacy-policy.md?raw'
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { ref } from 'vue';
+import policyMd from '@/assets/privacy-policy.md?raw';
 
-const open = ref(false)
-const html = DOMPurify.sanitize(marked.parse(policyMd) as string)
+const open = ref(false);
+const html = DOMPurify.sanitize(marked.parse(policyMd) as string);
 </script>
 
 <style scoped lang="sass">

@@ -5,17 +5,17 @@
  */
 
 // Plugins
+import { createApp } from 'vue';
 import { registerPlugins } from '@/plugins';
-
-// Components
 import App from './App.vue';
 
+// Components
+
 // Composables
-import { createApp } from 'vue';
 
 // Styles
 import 'unfonts.css';
-import '@/assets/styles.css'
+import '@/assets/styles.css';
 
 const app = createApp(App);
 
