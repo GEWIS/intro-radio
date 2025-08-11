@@ -16,4 +16,4 @@ jobs:
   dockerize:
     uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
     with:
-      projects: '["."]'
+      projects: '[".", "./nginx"]'

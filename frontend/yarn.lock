@@ -348,6 +348,11 @@
     "@vue/eslint-config-prettier" "^10.2.0"
     eslint-config-prettier "^10.0.1"
 
+"@gewis/release-config@^2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@gewis/release-config/-/release-config-2.4.0.tgz#32b8c2fb8f93210e3cbe0b0aa7549ff72e246425"
+  integrity sha512-Dh61QyBiDeTbdDcUszNroLKcz9SUC5/cR9ERk/PWB8gSKwmUs40l72DM94xFT/ileBRs81FXuiYOF5kmn6kFPA==
+
 "@humanfs/core@^0.19.1":
   version "0.19.1"
   resolved "https://registry.yarnpkg.com/@humanfs/core/-/core-0.19.1.tgz#17c55ca7d426733fe3c561906b8173c336b40a77"
