@@ -55,6 +55,7 @@ type Event = {
   icon: string;
   iconColor: string;
   color: string;
+  colorDark: string;
   date: string;
   time: string;
 };

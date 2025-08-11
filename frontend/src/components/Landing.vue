@@ -33,7 +33,7 @@
           <RadioChat v-if="chatActive" />
           <v-card
             v-else
-            class="pa-4"
+            class="py-4"
             color="surface-variant"
             rounded="lg"
             subtitle="Start a chat with the radio"
@@ -42,15 +42,14 @@
             @click="startChatFlow"
           >
             <template #prepend>
-              <v-icon icon="mdi-account-group-outline" />
+              <v-icon class="px-5" icon="mdi-account-group-outline" />
             </template>
           </v-card>
         </v-col>
 
         <v-col v-if="isStarted" cols="12">
-          <!--          or call us -->
           <v-card
-            class="pa-4"
+            class="py-4"
             color="surface-variant"
             href="tel:0402478113"
             rounded="lg"
@@ -59,7 +58,7 @@
             variant="tonal"
           >
             <template #prepend>
-              <v-icon icon="mdi-phone" />
+              <v-icon class="px-5" icon="mdi-phone" />
             </template>
           </v-card>
         </v-col>
