@@ -9,6 +9,8 @@ const app = createApp(App);
 
 registerPlugins(app);
 const appStore = useAppStore();
+
+void appStore.fetchToken();
 appStore.fetchRadioInfo().then(() => {
   app.mount('#app');
 });

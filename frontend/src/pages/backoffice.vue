@@ -95,7 +95,6 @@ async function validateKey() {
 }
 
 // Opens a WS as radio, sends handshake, and resolves true if the server does not close it immediately.
-// Opens a WS as radio, sends handshake, and resolves true if the server does not close it immediately.
 function validateRadioKeyQuick(tok: string, key: string): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;

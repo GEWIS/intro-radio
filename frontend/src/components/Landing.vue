@@ -91,31 +91,26 @@
 
 <script setup lang="ts">
 import { useCountdown } from '@/composables/useCountdown.ts';
+import { useGewisAuth } from '@/composables/useGewisAuth.ts';
 import { useAppStore } from '@/stores/app.ts';
 
 const store = useAppStore();
 
 const { radio } = storeToRefs(store);
-
 const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
-// Check for token in URL and store in localStorage
-const params = new URLSearchParams(window.location.search);
-const tokenParam = params.get('token');
-if (tokenParam) {
-  localStorage.setItem('token', tokenParam);
-  chatActive.value = true;
+const { ensureToken, getToken } = useGewisAuth();
 
-  // Remove ?token=... from the URL without reloading
-  const newUrl = window.location.origin + window.location.pathname + window.location.hash;
-  window.history.replaceState({}, document.title, newUrl);
-}
+onMounted(() => {
+  // If we already have a token, enable chat
+  if (getToken()) chatActive.value = true;
+});
 
-function startChatFlow() {
-  setTimeout(() => {
-    chatActive.value = true;
-  }, 1000); // simulate auth delay
+async function startChatFlow() {
+  // Ensure token, redirect if needed
+  const token = await ensureToken();
+  if (token) chatActive.value = true;
 }
 
 const links = [

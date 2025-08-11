@@ -8,7 +8,9 @@ interface AppState {
     audioMountPoint: string;
     startTime: Date;
   };
+  token: string;
 }
+
 export const useAppStore = defineStore('app', {
   state: () =>
     ({
@@ -18,6 +20,7 @@ export const useAppStore = defineStore('app', {
         audioMountPoint: '',
         startTime: new Date(),
       },
+      token: '',
     }) as AppState,
   getters: {
     radioInfo(state) {
@@ -38,6 +41,18 @@ export const useAppStore = defineStore('app', {
           this.radio.audioMountPoint = data.audioMountPoint;
           this.radio.startTime = new Date(data.startTime);
           return this.radio;
+        })
+        .catch((error) => {
+          console.error(error);
+        });
+    },
+
+    async fetchToken() {
+      return fetch('api/v1/token')
+        .then((res) => res.json())
+        .then((data) => {
+          this.token = data.token;
+          return this.token;
         })
         .catch((error) => {
           console.error(error);
