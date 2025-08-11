@@ -11,16 +11,10 @@
       <v-row>
         <v-col cols="12">
           <AudioStream v-if="isStarted" :base-url="radio.audioUrl" :mount-point="radio.audioMountPoint" />
-          <v-card
-            v-else
-            v-ripple
-            class="py-4"
-            color="primary"
-            rounded="lg"
-          >
+          <v-card v-else v-ripple class="py-4" color="primary" rounded="lg">
             <template #title>
               <div class="w-100 text-center">
-                <h2> Going live in {{ formattedCountdown }}</h2>
+                <h2>Going live in {{ formattedCountdown }}</h2>
               </div>
             </template>
           </v-card>

@@ -8,9 +8,7 @@
     </div>
     <v-expand-transition>
       <div v-if="expanded" class="mt-4">
-        <div class="mb-4">
-          Apart from playing the best music, we also have some quality segments for you to enjoy:
-        </div>
+        <div class="mb-4">Apart from playing the best music, we also have some quality segments for you to enjoy:</div>
         <template v-for="([date, ev], groupIdx) in groupedEvents" :key="date">
           <div v-if="groupIdx > 0" class="my-4">
             <v-divider />

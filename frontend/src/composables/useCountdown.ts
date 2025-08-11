@@ -1,8 +1,8 @@
-import { computed, onMounted, onUnmounted, ref, type Ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 function toMs(start: Date | number | null | undefined): number | null {
   if (start instanceof Date) return start.getTime();
-  if (typeof start === "number") return start;
+  if (typeof start === 'number') return start;
   return null;
 }
 
@@ -10,8 +10,8 @@ export function useCountdown(startTime: Date, intervalMs = 1000) {
   const now = ref(Date.now());
   let timer: number | undefined;
 
-  const debugCountdown = typeof window !== "undefined"
-    && new URLSearchParams(window.location.search).get("debug") === "countdown";
+  const debugCountdown =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === 'countdown';
 
   onMounted(() => {
     timer = window.setInterval(() => {
@@ -38,11 +38,11 @@ export function useCountdown(startTime: Date, intervalMs = 1000) {
     const seconds = totalSeconds % 60;
 
     const parts: string[] = [];
-    if (hours > 0) parts.push(`${hours} Hour${hours === 1 ? "" : "s"},`);
-    if (minutes > 0 || hours > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"} and`);
-    parts.push(`${seconds} second${seconds === 1 ? "" : "s"}`);
+    if (hours > 0) parts.push(`${hours} Hour${hours === 1 ? '' : 's'},`);
+    if (minutes > 0 || hours > 0) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'} and`);
+    parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`);
 
-    return parts.join(" ");
+    return parts.join(' ');
   });
 
   return { now, countdown, isStarted, formattedCountdown };
