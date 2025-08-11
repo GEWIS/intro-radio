@@ -33,7 +33,7 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	http.HandleFunc("/api/v1/radio/token", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/v1/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(token)
 	})
