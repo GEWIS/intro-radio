@@ -19,6 +19,7 @@ var (
 	audioURL        = String("RADIO_AUDIO_URL", "https://fr1.streamhosting.ch")
 	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/lounge64.aac")
 	radioStartTime  = String("RADIO_START_TIME", "2025-08-18T07:00:00Z")
+	token           = String("RADIO_GEWIS_TOKEN", "gewis-radio")
 )
 
 func main() {
@@ -30,6 +31,11 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	http.HandleFunc("/api/v1/radio/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(token)
 	})
 
 	http.HandleFunc("/api/v1/radio", func(w http.ResponseWriter, r *http.Request) {
