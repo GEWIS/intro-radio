@@ -153,7 +153,7 @@ function selectUser(id: string) {
 
 function connect() {
   connecting.value = true;
-  ws = new WebSocket(`ws://${window.location.host}/ws?role=radio`);
+  ws = new WebSocket(`wss://${window.location.host}/ws?role=radio`);
 
   ws.addEventListener('open', () => {
     isClosed.value = false;

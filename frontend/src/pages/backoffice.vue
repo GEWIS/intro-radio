@@ -113,7 +113,7 @@ function validateRadioKeyQuick(tok: string, key: string): Promise<boolean> {
     };
 
     try {
-      const ws = new WebSocket(`ws://${window.location.host}/ws?role=radio`);
+      const ws = new WebSocket(`wss://${window.location.host}/ws?role=radio`);
 
       const handleOpen = () => {
         ws.send(JSON.stringify({ token: tok, radioKey: key }));

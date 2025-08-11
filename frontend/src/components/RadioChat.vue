@@ -48,7 +48,7 @@ function connect() {
     return;
   }
 
-  socket = new WebSocket('ws://' + window.location.host + '/ws?role=user');
+  socket = new WebSocket('wss://' + window.location.host + '/ws?role=user');
 
   socket.addEventListener('open', () => {
     isClosed.value = false;
