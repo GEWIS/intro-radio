@@ -47,6 +47,23 @@
           </v-card>
         </v-col>
 
+        <v-col v-if="isStarted" cols="12">
+<!--          or call us -->
+          <v-card
+            class="pa-4"
+            color="surface-variant"
+            href="tel:0402478113"
+            rounded="lg"
+            subtitle="Instead of chatting, you can also call us live!"
+            title="Call us at 040 247 8113"
+            variant="tonal"
+          >
+            <template #prepend>
+              <v-icon icon="mdi-phone" />
+            </template>Or call us instead!
+          </v-card>
+        </v-col>
+
         <v-col v-for="link in links" :key="link.href" cols="12">
           <v-card
             append-icon="mdi-open-in-new"
