@@ -1,0 +1,15 @@
+name: Docker Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  dockerize:
+    uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
+    with:
+      projects: '["."]'

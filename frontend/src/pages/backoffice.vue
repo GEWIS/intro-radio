@@ -10,7 +10,7 @@
       <v-card v-if="stage === 'auth'" class="p-4" color="surface-variant" rounded="lg" variant="tonal">
         <v-skeleton-loader type="paragraph, actions" />
       </v-card>
-      
+
       <!-- Ask for admin key -->
       <div v-else-if="stage === 'need-key'" class="d-flex flex-column align-center w-full">
         <v-card class="px-4 py-4 w-50" color="surface-variant" rounded="lg" variant="tonal">
