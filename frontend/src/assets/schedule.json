@@ -1,12 +1,12 @@
 [
   {
-    "title": "Slap Gelul",
-    "subtitle": "Good start of the day",
+    "title": "Grand Opening",
+    "subtitle": "Welcome to the radio",
     "icon": "mdi-bullhorn-variant",
     "iconColor": "red",
     "color": "#FFEBEE",
     "date": "2025-08-18",
-    "time": "10:00 - 11:30"
+    "time": "9:00 - 10:00"
   },
   {
     "title": "Centurion Marathon",
@@ -16,5 +16,41 @@
     "color": "#FFF8E1",
     "date": "2025-08-19",
     "time": "16:00 - 20:00"
+  },
+  {
+    "title": "Holland Casino",
+    "subtitle": "Sound financial advice",
+    "icon": "mdi-cash-multiple",
+    "iconColor": "green",
+    "color": "#E6F7F2",
+    "date": "2025-08-20",
+    "time": "14:00 - 15:00"
+  },
+  {
+    "title": "Hot Ones",
+    "subtitle": "Please dont sue us for copyright violations",
+    "icon": "mdi-food-drumstick",
+    "iconColor": "red",
+    "color": "#FFEBEE",
+    "date": "2025-08-21",
+    "time": "11:00 - 12:00"
+  },
+  {
+    "title": "Electroshock therapy",
+    "subtitle": "Trust us",
+    "icon": "mdi-brain",
+    "iconColor": "blue",
+    "color": "#E3F2FD",
+    "date": "2025-08-21",
+    "time": "14:00 - 15:00"
+  },
+  {
+    "title": "DOORHAAL. DONDERDAG.",
+    "subtitle": "This year, you can listen to Intro Radio during the complete doorhaaldonderdag!",
+    "icon": "mdi-sleep-off",
+    "iconColor": "purple",
+    "color": "#F3E5F5",
+    "date": "2025-08-21",
+    "time": "20:00 - 08:00"
   }
 ]
