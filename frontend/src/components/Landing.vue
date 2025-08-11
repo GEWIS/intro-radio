@@ -14,7 +14,8 @@
           <v-card v-else v-ripple class="py-4" color="primary" rounded="lg">
             <template #title>
               <div class="w-100 text-center">
-                <h2>Going live in {{ formattedCountdown }}</h2>
+                <h2>Going live in:</h2>
+                <h4 class="mt-2">{{ formattedCountdown }}</h4>
               </div>
             </template>
           </v-card>
