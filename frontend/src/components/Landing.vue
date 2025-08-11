@@ -54,7 +54,7 @@
             href="tel:0402478113"
             rounded="lg"
             subtitle="Instead of chatting, you can also call us live!"
-            title="Call us at 040 247 8113"
+            title="Call us at +31 (0) 040 247 8113"
             variant="tonal"
           >
             <template #prepend>
