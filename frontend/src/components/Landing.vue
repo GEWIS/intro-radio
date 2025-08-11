@@ -9,19 +9,32 @@
       </div>
 
       <v-row>
-        <v-col v-if="radioInfo" cols="12">
-          <AudioStream :base-url="radioInfo.audioUrl" :mount-point="radioInfo.audioMountPoint" />
+        <v-col cols="12">
+          <AudioStream v-if="isStarted" :base-url="radio.audioUrl" :mount-point="radio.audioMountPoint" />
+          <v-card
+            v-else
+            v-ripple
+            class="py-4"
+            color="primary"
+            rounded="lg"
+          >
+            <template #title>
+              <div class="w-100 text-center">
+                <h2> Going live in {{ formattedCountdown }}</h2>
+              </div>
+            </template>
+          </v-card>
         </v-col>
 
-        <v-col v-if="radioInfo" cols="12">
-          <VideoStream class="mb-8" :src="radioInfo.videoUrl" />
+        <v-col v-if="isStarted" cols="12">
+          <VideoStream class="mb-8" :src="radio.videoUrl" />
         </v-col>
 
         <v-col cols="12">
           <UpcomingEvents />
         </v-col>
 
-        <v-col cols="12">
+        <v-col v-if="isStarted" cols="12">
           <RadioChat v-if="chatActive" />
           <v-card
             v-else
@@ -66,20 +79,16 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, ref } from 'vue';
+import { useCountdown } from '@/composables/useCountdown.ts';
+import { useAppStore } from '@/stores/app.ts';
+
+const store = useAppStore();
+
+const { radio } = storeToRefs(store);
+
+const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
-
-onBeforeMount(fetchRadioInfo);
-
-interface RadioInfoResponse {
-  videoUrl: string;
-  audioUrl: string;
-  audioMountPoint: string;
-}
-
-const radioInfo = ref<RadioInfoResponse>();
-
 // Check for token in URL and store in localStorage
 const params = new URLSearchParams(window.location.search);
 const tokenParam = params.get('token');
@@ -90,11 +99,6 @@ if (tokenParam) {
   // Remove ?token=... from the URL without reloading
   const newUrl = window.location.origin + window.location.pathname + window.location.hash;
   window.history.replaceState({}, document.title, newUrl);
-}
-
-async function fetchRadioInfo() {
-  const res = await fetch('api/v1/radio');
-  radioInfo.value = await res.json();
 }
 
 function startChatFlow() {
