@@ -6,7 +6,7 @@ interface AppState {
     videoUrl: string;
     audioUrl: string;
     audioMountPoint: string;
-    startTime?: Date;
+    startTime: Date;
   };
 }
 export const useAppStore = defineStore('app', {
@@ -16,7 +16,7 @@ export const useAppStore = defineStore('app', {
         videoUrl: '',
         audioUrl: '',
         audioMountPoint: '',
-        startTime: undefined,
+        startTime: new Date(),
       },
     }) as AppState,
   getters: {
