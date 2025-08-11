@@ -10,6 +10,7 @@ type RadioInfo struct {
 	VideoURL        string `json:"videoUrl"`
 	AudioURL        string `json:"audioUrl"`
 	AudioMountPoint string `json:"audioMountPoint"`
+	StartTime       string `json:"startTime"`
 }
 
 var (
@@ -17,6 +18,7 @@ var (
 	videoURL        = String("RADIO_VIDEO_URL", "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8")
 	audioURL        = String("RADIO_AUDIO_URL", "https://fr1.streamhosting.ch")
 	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/lounge64.aac")
+	radioStartTime  = String("RADIO_START_TIME", "2025-08-18T07:00:00Z")
 )
 
 func main() {
@@ -36,6 +38,7 @@ func main() {
 			VideoURL:        videoURL,
 			AudioURL:        audioURL,
 			AudioMountPoint: audioMountPoint,
+			StartTime:       radioStartTime,
 		})
 	})
 
