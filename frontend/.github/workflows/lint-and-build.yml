@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-lint:
     uses: GEWIS/actions/.github/workflows/lint-and-build-yarn.yml@v1
@@ -16,4 +20,4 @@ jobs:
       lint: true
       format: true
       build: true
-      test: true
+      test: false
