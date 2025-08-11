@@ -16,5 +16,5 @@ jobs:
     with:
       projects: "['.']"
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: "['gewis/radiogaga']"
+      docker-paths: "['gewis/radio/backend']"
 
