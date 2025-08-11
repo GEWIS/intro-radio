@@ -2,7 +2,7 @@
   <v-card class="pa-4 mb-4" rounded="lg" style="cursor: pointer" @click="expanded = !expanded">
     <div class="d-flex align-center">
       <v-icon class="mr-3" color="primary">mdi-calendar-star</v-icon>
-      <span class="text-h5">Upcoming Events</span>
+      <span class="text-h5">Radio Schedule</span>
       <v-spacer />
       <v-icon color="primary">{{ expanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
     </div>
