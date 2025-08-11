@@ -48,7 +48,7 @@
         </v-col>
 
         <v-col v-if="isStarted" cols="12">
-<!--          or call us -->
+          <!--          or call us -->
           <v-card
             class="pa-4"
             color="surface-variant"
@@ -60,7 +60,7 @@
           >
             <template #prepend>
               <v-icon icon="mdi-phone" />
-            </template>Or call us instead!
+            </template>
           </v-card>
         </v-col>
 

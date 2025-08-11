@@ -20,7 +20,7 @@
             class="d-flex align-center mb-3 pa-3"
             :class="{ 'current-event': isCurrentEvent(event) }"
             :style="{
-              background: event.color,
+              background: isDark ? event.colorDark : event.color,
               borderRadius: '10px',
             }"
           >
@@ -44,6 +44,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import schedule from '@/assets/schedule.json';
+import { useDarkMode } from '@/composables/useDarkMode.ts';
+
+const { isDark } = useDarkMode();
 
 const expanded = ref(false);
 type Event = {

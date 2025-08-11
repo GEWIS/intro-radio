@@ -6,7 +6,8 @@
     "iconColor": "red",
     "color": "#FFEBEE",
     "date": "2025-08-18",
-    "time": "9:00 - 10:00"
+    "time": "9:00 - 10:00",
+    "colorDark": "#A53747"
   },
   {
     "title": "Centurion Marathon",
@@ -15,7 +16,8 @@
     "iconColor": "amber",
     "color": "#FFF8E1",
     "date": "2025-08-19",
-    "time": "16:00 - 20:00"
+    "time": "16:00 - 20:00",
+    "colorDark": "#A28836"
   },
   {
     "title": "Holland Casino",
@@ -24,7 +26,8 @@
     "iconColor": "green",
     "color": "#E6F7F2",
     "date": "2025-08-20",
-    "time": "14:00 - 15:00"
+    "time": "14:00 - 15:00",
+    "colorDark": "#4F8676"
   },
   {
     "title": "Hot Ones",
@@ -33,7 +36,8 @@
     "iconColor": "red",
     "color": "#FFEBEE",
     "date": "2025-08-21",
-    "time": "11:00 - 12:00"
+    "time": "11:00 - 12:00",
+    "colorDark": "#A53747"
   },
   {
     "title": "Electroshock therapy",
@@ -42,7 +46,8 @@
     "iconColor": "blue",
     "color": "#E3F2FD",
     "date": "2025-08-21",
-    "time": "14:00 - 15:00"
+    "time": "14:00 - 15:00",
+    "colorDark": "#3D739A"
   },
   {
     "title": "DOORHAAL. DONDERDAG.",
@@ -51,6 +56,7 @@
     "iconColor": "purple",
     "color": "#F3E5F5",
     "date": "2025-08-21",
-    "time": "20:00 - 08:00"
+    "time": "20:00 - 08:00",
+    "colorDark": "#7C5282"
   }
 ]
