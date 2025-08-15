@@ -1,12 +1,12 @@
 <template>
   <v-dialog v-model="open" max-width="900">
     <template #activator="{ props }">
-      <v-btn v-bind="props" size="small" variant="text">Privacy</v-btn>
+      <v-btn v-bind="props" size="small" variant="text">Credits</v-btn>
     </template>
 
     <v-card rounded="lg">
       <v-card-title class="d-flex align-center">
-        <span class="text-h6">Privacy Policy</span>
+        <span class="text-h6">Credits</span>
         <v-spacer />
         <v-btn icon="mdi-close" variant="text" @click="open = false" />
       </v-card-title>
@@ -24,7 +24,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { ref } from 'vue';
-import policyMd from '@/assets/privacy-policy.md?raw';
+import policyMd from '@/assets/credits.md?raw';
 
 const open = ref(false);
 const html = DOMPurify.sanitize(marked.parse(policyMd) as string);

@@ -1,10 +1,12 @@
 <template>
   <v-footer app height="40">
-    <div class="text-caption text-disabled d-flex align-center justify-center w-100 gap-2">
-      <div class="text-caption text-disabled d-flex align-center gap-2">
+    <div class="text-caption text-disabled d-flex align-center justify-center w-100 gap-1">
+      <div class="text-caption text-disabled d-flex align-center gap-1">
         <span>&copy; {{ new Date().getFullYear() }} Intro Radio</span>
-        <span class="mx-2">•</span>
+        <span>•</span>
         <PrivacyPolicy />
+        <span>•</span>
+        <Credits />
       </div>
 
       <v-tooltip location="top" text="Toggle dark mode">
@@ -25,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import Credits from '@/components/Credits.vue';
 import PrivacyPolicy from '@/components/PrivacyPolicy.vue';
 import { useDarkMode } from '@/composables/useDarkMode.ts';
 

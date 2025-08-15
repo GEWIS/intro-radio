@@ -1,0 +1,12 @@
+- Willem: **Co-host**
+- Samuel: **Co-host/tech**
+- Victor: **Co-host/tech**
+- Jan: **Tech**
+- Tessa: **Organizational/rubric**
+- Max: **Tech/Sound bytes**
+- Andrei: **Sound bytes**
+- Michiel: **Rubric/Sound bytes**
+- Anne: **Sound bytes**
+- Karsten: **Sound bytes**
+- Lotte: **Rubric**
+- Previous radio hosts: **Inspiration/tech**
