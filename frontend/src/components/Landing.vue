@@ -86,7 +86,7 @@
         </v-col>
       </v-row>
     </div>
-    <RequestSong />
+    <RequestSong v-if="isStarted" />
   </v-container>
 </template>
 
