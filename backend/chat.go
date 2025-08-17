@@ -20,6 +20,11 @@ type Client struct {
 	id   string
 }
 
+const (
+	pingPeriod = 25 * time.Second
+	writeWait  = 10 * time.Second
+)
+
 type IncomingMessage struct {
 	Token    string `json:"token"`              // required on every message
 	To       string `json:"to,omitempty"`       // target user id when role=radio
@@ -142,6 +147,19 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
 		c.dispatch(client, first, claims)
 	}
+
+	// Start ping loop
+	go func(conn *websocket.Conn) {
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+		for range ticker.C {
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+				// stop on error, reader goroutine will notice close
+				return
+			}
+		}
+	}(client.conn)
 
 	// Continue with normal loop
 	go c.handleClient(client)
