@@ -86,11 +86,13 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var first IncomingMessage
 	if err := json.Unmarshal(data, &first); err != nil {
+		log.Warn().Err(err).Msg("Closing connecting: invalid json")
 		_ = conn.Close()
 		return
 	}
 	claims, err := c.verifyGEWISToken(first.Token)
 	if err != nil {
+		log.Warn().Err(err).Msg("Closing connecting: invalid token")
 		_ = conn.Close()
 		return
 	}
@@ -102,6 +104,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
 				time.Now().Add(time.Second),
 			)
+			log.Warn().Msg("Closing connecting: invalid radio key")
 			_ = conn.Close()
 			return
 		}
@@ -124,6 +127,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 				websocket.FormatCloseMessage(4100, "replaced by new connection"),
 				time.Now().Add(time.Second),
 			)
+			log.Warn().Msg("Closing replacing connection: replaced by new connection")
 			_ = prev.conn.Close()
 		}
 		c.users[client.id] = client
