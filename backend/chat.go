@@ -95,7 +95,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
-	claims, err := c.verifyGEWISToken(first.Token)
+	claims, err := c.verifyGEWISToken(first.Token, true)
 	if err != nil {
 		log.Warn().Err(err).Msg("Closing connecting: invalid token")
 		_ = conn.Close()
@@ -188,7 +188,7 @@ func (c *Chat) handleClient(client *Client) {
 			log.Warn().Err(err).Msg("invalid json")
 			continue
 		}
-		claims, err := c.verifyGEWISToken(in.Token) // keep strict auth per message
+		claims, err := c.verifyGEWISToken(in.Token, false)
 		if err != nil {
 			log.Warn().Err(err).Msg("invalid GEWIS token")
 			continue
@@ -233,7 +233,10 @@ func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	}
 }
 
-func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
+// verifyGEWISToken parses and validates the token signature.
+// If requireExpiry is true, expired tokens are rejected.
+// If requireExpiry is false, expired tokens trigger a warning but are accepted.
+func (c *Chat) verifyGEWISToken(tokenStr string, requireExpiry bool) (*GEWISClaims, error) {
 	if tokenStr == "" {
 		return nil, errors.New("missing token")
 	}
@@ -244,7 +247,7 @@ func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
 		func(t *jwt.Token) (any, error) { return []byte(GEWISSecret), nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS512.Alg()}),
 		jwt.WithLeeway(15*time.Second),
-		jwt.WithExpirationRequired(),
+		// no jwt.WithExpirationRequired(), we handle it below
 	)
 	if err != nil {
 		return nil, err
@@ -252,5 +255,17 @@ func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
 	if !token.Valid {
 		return nil, errors.New("invalid token")
 	}
+
+	// Manual expiry handling
+	if claims.ExpiresAt != nil && time.Now().After(claims.ExpiresAt.Time) {
+		if requireExpiry {
+			return nil, errors.New("token expired")
+		}
+		log.Warn().
+			Int("lidnr", claims.Lidnr).
+			Time("expired_at", claims.ExpiresAt.Time).
+			Msg("GEWIS token expired, accepting for message")
+	}
+
 	return claims, nil
 }
