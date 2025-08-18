@@ -240,8 +240,14 @@ func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	data, _ := json.Marshal(msg)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	log.Trace().Str("user", userID).Msg("trying to forward message to user")
 	if user, ok := c.users[userID]; ok {
-		_ = user.conn.WriteMessage(websocket.TextMessage, data)
+		err := user.conn.WriteMessage(websocket.TextMessage, data)
+		if err == nil {
+			log.Warn().Str("user", userID).Msg("failed to forward message to user")
+		} else {
+			log.Trace().Str("user", userID).Msg("message forwarded to user")
+		}
 	}
 }
 
