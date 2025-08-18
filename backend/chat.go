@@ -95,7 +95,8 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
-	claims, err := c.verifyGEWISToken(first.Token, true)
+	claims, err := c.verifyGEWISToken(first.Token, false)
+	//claims, err := c.verifyGEWISToken(first.Token, true)
 	if err != nil {
 		log.Warn().Err(err).Msg("Closing connecting: invalid token")
 		_ = conn.Close()
