@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 type Outgoing = {
   from: string;
@@ -91,7 +91,17 @@ type ChatUser = { id: string; givenName: string; familyName: string; unread: num
 const props = defineProps<{
   token: string;
   radioKey: string;
+  /** Optional async getter that returns a fresh token */
+  getToken?: () => Promise<string>;
 }>();
+
+const tokenRef = ref(props.token);
+watch(
+  () => props.token,
+  v => {
+    if (v) tokenRef.value = v;
+  },
+);
 
 const input = ref('');
 const connecting = ref(false);
@@ -157,7 +167,7 @@ function connect() {
 
   ws.addEventListener('open', () => {
     isClosed.value = false;
-    ws?.send(JSON.stringify({ token: props.token, radioKey: props.radioKey }));
+    ws?.send(JSON.stringify({ token: tokenRef.value, radioKey: props.radioKey }));
     connecting.value = false;
   });
 
@@ -189,11 +199,24 @@ function connect() {
   });
 }
 
-function reconnect() {
+async function reconnect() {
+  if (connecting.value) return;
+  connecting.value = true;
+
   try {
-    ws?.close();
-  } catch {}
-  connect();
+    // Try to fetch a fresh token if a getter is provided
+    if (props.getToken) {
+      const fresh = await props.getToken();
+      if (fresh) tokenRef.value = fresh;
+    }
+  } catch {
+    // Ignore token refresh errors and proceed with the last known token
+  } finally {
+    try {
+      ws?.close();
+    } catch {}
+    connect();
+  }
 }
 
 function send() {
@@ -202,7 +225,7 @@ function send() {
   if (!content) return;
 
   const to = activeUser.value;
-  const payload: Incoming = { token: props.token, to, content };
+  const payload: Incoming = { token: tokenRef.value, to, content };
   ws.send(JSON.stringify(payload));
 
   if (!chats.value[to]) chats.value[to] = [];
@@ -216,3 +239,4 @@ function send() {
 onMounted(connect);
 onBeforeUnmount(() => ws?.close());
 </script>
+
