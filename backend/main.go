@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/rs/zerolog"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
@@ -21,10 +22,17 @@ var (
 	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/high")
 	radioStartTime  = String("RADIO_START_TIME", "2025-08-18T07:00:00Z")
 	token           = String("RADIO_GEWIS_TOKEN", "gewis-radio")
+	logLevel        = String("LOG_LEVEL", "trace")
 )
 
 func main() {
 	chat := NewChat()
+
+	l, err := zerolog.ParseLevel(logLevel)
+	if err != nil {
+		log.Fatal().Err(err).Msg("could not parse level")
+	}
+	zerolog.SetGlobalLevel(l)
 
 	http.HandleFunc("/ws", chat.HandleWS)
 
