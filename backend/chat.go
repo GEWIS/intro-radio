@@ -183,7 +183,7 @@ func (c *Chat) handleClient(client *Client) {
 		c.mutex.Lock()
 		if client.role == "user" {
 			delete(c.users, client.id)
-		} else {
+		} else if client.role == "radio" {
 			delete(c.radios, client)
 		}
 		c.mutex.Unlock()
