@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,8 +22,9 @@ type Client struct {
 }
 
 const (
-	pingPeriod = 25 * time.Second
-	writeWait  = 10 * time.Second
+	pingPeriod   = 25 * time.Second
+	writeWait    = 10 * time.Second
+	closeTimeout = 1 * time.Second
 )
 
 type IncomingMessage struct {
@@ -48,16 +50,22 @@ type GEWISClaims struct {
 }
 
 var (
-	GEWISSecret  = String("GEWIS_SECRET", "ChangeMe")
-	RADIOChatKey = String("RADIO_CHAT_KEY", "ChangeMe")
+	GEWISSecret  = envOr("GEWIS_SECRET", "ChangeMe")
+	RADIOChatKey = envOr("RADIO_CHAT_KEY", "ChangeMe")
 )
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
 
 type Chat struct {
 	upgrader websocket.Upgrader
-
-	mutex  sync.Mutex
-	users  map[string]*Client   // id -> client
-	radios map[*Client]struct{} // radio connections
+	mutex    sync.Mutex
+	users    map[string]*Client   // id -> client
+	radios   map[*Client]struct{} // radio connections
 }
 
 func NewChat() *Chat {
@@ -83,7 +91,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read first message as handshake to extract lidnr
+	// Read first message as handshake
 	_, data, err := conn.ReadMessage()
 	if err != nil {
 		_ = conn.Close()
@@ -91,14 +99,15 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var first IncomingMessage
 	if err := json.Unmarshal(data, &first); err != nil {
-		log.Warn().Err(err).Msg("Closing connecting: invalid json")
+		log.Warn().Err(err).Msg("closing connection: invalid json")
 		_ = conn.Close()
 		return
 	}
-	claims, err := c.verifyGEWISToken(first.Token, false)
-	//claims, err := c.verifyGEWISToken(first.Token, true)
+
+	// Handshake token is verified for signature only. Expiry is ignored.
+	claims, err := c.verifyGEWISToken(first.Token)
 	if err != nil {
-		log.Warn().Err(err).Msg("Closing connecting: invalid token")
+		log.Warn().Err(err).Msg("closing connection: invalid token at handshake")
 		_ = conn.Close()
 		return
 	}
@@ -108,32 +117,27 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 			_ = conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
-				time.Now().Add(time.Second),
+				time.Now().Add(closeTimeout),
 			)
-			log.Warn().Msg("Closing connecting: invalid radio key")
+			log.Warn().Msg("closing connection: invalid radio key")
 			_ = conn.Close()
 			return
 		}
 	}
 
 	lid := strconv.Itoa(claims.Lidnr)
+	client := &Client{conn: conn, role: role, id: lid}
 
-	client := &Client{
-		conn: conn,
-		role: role,
-		id:   lid, // stable id = lidnr
-	}
-
-	// Register client, replacing any existing session with same lidnr
+	// Register
 	c.mutex.Lock()
 	if role == "user" {
 		if prev, ok := c.users[client.id]; ok && prev != nil && prev.conn != nil {
 			_ = prev.conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4100, "replaced by new connection"),
-				time.Now().Add(time.Second),
+				time.Now().Add(closeTimeout),
 			)
-			log.Warn().Msg("Closing replacing connection: replaced by new connection")
+			log.Warn().Msg("replacing connection: replaced by new connection")
 			_ = prev.conn.Close()
 		}
 		c.users[client.id] = client
@@ -142,27 +146,26 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	c.mutex.Unlock()
 
-	log.Info().Str("role", role).Str("id", client.id).Str("Role", client.role).Msg("Client connected")
+	log.Info().Str("role", role).Str("id", client.id).Msg("client connected")
 
-	// Handshake frame should not be broadcast unless it contains data
+	// Only broadcast handshake if it has content
 	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
 		c.dispatch(client, first, claims)
 	}
 
-	// Start ping loop
+	// Ping loop
 	go func(conn *websocket.Conn) {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
 		for range ticker.C {
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
-				// stop on error, reader goroutine will notice close
 				return
 			}
 		}
 	}(client.conn)
 
-	// Continue with normal loop
+	// Reader loop
 	go c.handleClient(client)
 }
 
@@ -176,7 +179,7 @@ func (c *Chat) handleClient(client *Client) {
 		}
 		c.mutex.Unlock()
 		_ = client.conn.Close()
-		log.Info().Str("role", client.role).Str("id", client.id).Msg("Client disconnected")
+		log.Info().Str("role", client.role).Str("id", client.id).Msg("client disconnected")
 	}()
 
 	for {
@@ -189,11 +192,19 @@ func (c *Chat) handleClient(client *Client) {
 			log.Warn().Err(err).Msg("invalid json")
 			continue
 		}
-		claims, err := c.verifyGEWISToken(in.Token, false)
-		if err != nil {
-			log.Warn().Err(err).Msg("invalid GEWIS token")
-			continue
+
+		// Verify signature only. Never deny due to exp.
+		claims, verr := c.verifyGEWISToken(in.Token)
+		if verr != nil {
+			log.Warn().Err(verr).Str("id", client.id).Msg("token invalid signature or algorithm, closing socket")
+			_ = client.conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(4001, "invalid token"),
+				time.Now().Add(closeTimeout),
+			)
+			return
 		}
+
 		c.dispatch(client, in, claims)
 	}
 }
@@ -217,15 +228,15 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage, claims *GEWISClaims)
 }
 
 func (c *Chat) forwardToRadios(msg OutgoingMessage) {
-	log.Trace().Str("user", msg.From).Msg("Forwarding message to radios")
+	log.Trace().Str("user", msg.From).Msg("forwarding message to radios")
 	data, _ := json.Marshal(msg)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	for r := range c.radios {
-		log.Trace().Str("radio", r.id).Msg("Forwarding message to radio")
+		log.Trace().Str("radio", r.id).Msg("forwarding message to radio")
 		_ = r.conn.WriteMessage(websocket.TextMessage, data)
 	}
-	log.Trace().Str("user", msg.From).Msg("Message forwarded to radios")
+	log.Trace().Str("user", msg.From).Msg("message forwarded to radios")
 }
 
 func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
@@ -237,21 +248,20 @@ func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	}
 }
 
-// verifyGEWISToken parses and validates the token signature.
-// If requireExpiry is true, expired tokens are rejected.
-// If requireExpiry is false, expired tokens trigger a warning but are accepted.
-func (c *Chat) verifyGEWISToken(tokenStr string, requireExpiry bool) (*GEWISClaims, error) {
+// verifyGEWISToken parses and validates signature only.
+// Exp is ignored. If present and in the past, it is logged but never causes an error.
+func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
 	if tokenStr == "" {
 		return nil, errors.New("missing token")
 	}
+
 	claims := &GEWISClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenStr,
 		claims,
 		func(t *jwt.Token) (any, error) { return []byte(GEWISSecret), nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS512.Alg()}),
-		//jwt.WithLeeway(15*time.Second),
-		// no jwt.WithExpirationRequired(), we handle it below
+		jwt.WithoutClaimsValidation(),
 	)
 	if err != nil {
 		return nil, err
@@ -260,15 +270,12 @@ func (c *Chat) verifyGEWISToken(tokenStr string, requireExpiry bool) (*GEWISClai
 		return nil, errors.New("invalid token")
 	}
 
-	// Manual expiry handling
+	// Optional visibility only
 	if claims.ExpiresAt != nil && time.Now().After(claims.ExpiresAt.Time) {
-		if requireExpiry {
-			return nil, errors.New("token expired")
-		}
 		log.Warn().
 			Int("lidnr", claims.Lidnr).
 			Time("expired_at", claims.ExpiresAt.Time).
-			Msg("GEWIS token expired, accepting for message")
+			Msg("GEWIS token expired, accepting anyway")
 	}
 
 	return claims, nil
