@@ -250,7 +250,7 @@ func (c *Chat) verifyGEWISToken(tokenStr string, requireExpiry bool) (*GEWISClai
 		claims,
 		func(t *jwt.Token) (any, error) { return []byte(GEWISSecret), nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS512.Alg()}),
-		jwt.WithLeeway(15*time.Second),
+		//jwt.WithLeeway(15*time.Second),
 		// no jwt.WithExpirationRequired(), we handle it below
 	)
 	if err != nil {
