@@ -16,9 +16,11 @@ import (
 )
 
 type Client struct {
-	conn *websocket.Conn
-	role string
-	id   string
+	conn       *websocket.Conn
+	role       string
+	id         string // lidnr as string
+	givenName  string
+	familyName string
 }
 
 const (
@@ -28,7 +30,7 @@ const (
 )
 
 type IncomingMessage struct {
-	Token    string `json:"token"`              // required on every message
+	Token    string `json:"token"`              // ignored after handshake
 	To       string `json:"to,omitempty"`       // target user id when role=radio
 	Content  string `json:"content"`            // message body
 	RadioKey string `json:"radioKey,omitempty"` // required in handshake when role=radio
@@ -63,9 +65,10 @@ func envOr(k, def string) string {
 
 type Chat struct {
 	upgrader websocket.Upgrader
-	mutex    sync.Mutex
-	users    map[string]*Client   // id -> client
-	radios   map[*Client]struct{} // radio connections
+
+	mutex  sync.Mutex
+	users  map[string]*Client   // id -> client
+	radios map[*Client]struct{} // radio connections
 }
 
 func NewChat() *Chat {
@@ -104,8 +107,8 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handshake token is verified for signature only. Expiry is ignored.
-	claims, err := c.verifyGEWISToken(first.Token)
+	// Handshake token verification: signature and alg only, expiry ignored
+	claims, err := c.verifyGEWISTokenHandshake(first.Token)
 	if err != nil {
 		log.Warn().Err(err).Msg("closing connection: invalid token at handshake")
 		_ = conn.Close()
@@ -126,9 +129,15 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lid := strconv.Itoa(claims.Lidnr)
-	client := &Client{conn: conn, role: role, id: lid}
+	client := &Client{
+		conn:       conn,
+		role:       role,
+		id:         lid,
+		givenName:  claims.GivenName,
+		familyName: claims.FamilyName,
+	}
 
-	// Register
+	// Register client, replacing any existing session with same lidnr
 	c.mutex.Lock()
 	if role == "user" {
 		if prev, ok := c.users[client.id]; ok && prev != nil && prev.conn != nil {
@@ -148,12 +157,12 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Str("role", role).Str("id", client.id).Msg("client connected")
 
-	// Only broadcast handshake if it has content
+	// Handshake frame should not be broadcast unless it contains data
 	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
-		c.dispatch(client, first, claims)
+		c.dispatch(client, first)
 	}
 
-	// Ping loop
+	// Start ping loop
 	go func(conn *websocket.Conn) {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
@@ -165,7 +174,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}(client.conn)
 
-	// Reader loop
+	// Continue with normal loop
 	go c.handleClient(client)
 }
 
@@ -192,28 +201,16 @@ func (c *Chat) handleClient(client *Client) {
 			log.Warn().Err(err).Msg("invalid json")
 			continue
 		}
-
-		// Verify signature only. Never deny due to exp.
-		claims, verr := c.verifyGEWISToken(in.Token)
-		if verr != nil {
-			log.Warn().Err(verr).Str("id", client.id).Msg("token invalid signature or algorithm, closing socket")
-			_ = client.conn.WriteControl(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(4001, "invalid token"),
-				time.Now().Add(closeTimeout),
-			)
-			return
-		}
-
-		c.dispatch(client, in, claims)
+		// No token checks here by design
+		c.dispatch(client, in)
 	}
 }
 
-func (c *Chat) dispatch(client *Client, in IncomingMessage, claims *GEWISClaims) {
+func (c *Chat) dispatch(client *Client, in IncomingMessage) {
 	out := OutgoingMessage{
-		From:       strconv.Itoa(claims.Lidnr),
-		GivenName:  claims.GivenName,
-		FamilyName: claims.FamilyName,
+		From:       client.id,
+		GivenName:  client.givenName,
+		FamilyName: client.familyName,
 		To:         in.To,
 		Content:    in.Content,
 	}
@@ -248,20 +245,19 @@ func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	}
 }
 
-// verifyGEWISToken parses and validates signature only.
-// Exp is ignored. If present and in the past, it is logged but never causes an error.
-func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
+// verifyGEWISTokenHandshake verifies signature and algorithm only.
+// Expiry is ignored. If present and in the past, it is logged but never rejected.
+func (c *Chat) verifyGEWISTokenHandshake(tokenStr string) (*GEWISClaims, error) {
 	if tokenStr == "" {
 		return nil, errors.New("missing token")
 	}
-
 	claims := &GEWISClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenStr,
 		claims,
 		func(t *jwt.Token) (any, error) { return []byte(GEWISSecret), nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS512.Alg()}),
-		jwt.WithoutClaimsValidation(),
+		jwt.WithoutClaimsValidation(), // skip time checks
 	)
 	if err != nil {
 		return nil, err
@@ -275,8 +271,7 @@ func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
 		log.Warn().
 			Int("lidnr", claims.Lidnr).
 			Time("expired_at", claims.ExpiresAt.Time).
-			Msg("GEWIS token expired, accepting anyway")
+			Msg("GEWIS token expired at handshake, accepting anyway")
 	}
-
 	return claims, nil
 }
