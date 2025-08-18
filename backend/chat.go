@@ -15,14 +15,12 @@ import (
 )
 
 type Client struct {
-	conn    *websocket.Conn
-	role    string
-	id      string
-	writeMu sync.Mutex // guard all writes to conn
+	conn *websocket.Conn
+	role string
+	id   string
 }
 
 const (
-	pongWait   = 60 * time.Second
 	pingPeriod = 25 * time.Second
 	writeWait  = 10 * time.Second
 )
@@ -93,13 +91,13 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var first IncomingMessage
 	if err := json.Unmarshal(data, &first); err != nil {
-		log.Warn().Err(err).Msg("Closing connection: invalid json")
+		log.Warn().Err(err).Msg("Closing connecting: invalid json")
 		_ = conn.Close()
 		return
 	}
 	claims, err := c.verifyGEWISToken(first.Token)
 	if err != nil {
-		log.Warn().Err(err).Msg("Closing connection: invalid token")
+		log.Warn().Err(err).Msg("Closing connecting: invalid token")
 		_ = conn.Close()
 		return
 	}
@@ -111,7 +109,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
 				time.Now().Add(time.Second),
 			)
-			log.Warn().Msg("Closing connection: invalid radio key")
+			log.Warn().Msg("Closing connecting: invalid radio key")
 			_ = conn.Close()
 			return
 		}
@@ -125,22 +123,11 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		id:   lid, // stable id = lidnr
 	}
 
-	// Configure read side keepalive
-	client.conn.SetReadLimit(1 << 20) // 1 MiB
-	_ = client.conn.SetReadDeadline(time.Now().Add(pongWait))
-	client.conn.SetPongHandler(func(string) error {
-		return client.conn.SetReadDeadline(time.Now().Add(pongWait))
-	})
-	client.conn.SetCloseHandler(func(code int, text string) error {
-		log.Info().Str("role", client.role).Str("id", client.id).Int("code", code).Str("reason", text).Msg("Client sent close")
-		return nil
-	})
-
 	// Register client, replacing any existing session with same lidnr
 	c.mutex.Lock()
 	if role == "user" {
 		if prev, ok := c.users[client.id]; ok && prev != nil && prev.conn != nil {
-			_ = prev.writeControl(
+			_ = prev.conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4100, "replaced by new connection"),
 				time.Now().Add(time.Second),
@@ -154,7 +141,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	c.mutex.Unlock()
 
-	log.Info().Str("role", role).Str("id", client.id).Msg("Client connected")
+	log.Info().Str("role", role).Str("id", client.id).Str("Role", client.role).Msg("Client connected")
 
 	// Handshake frame should not be broadcast unless it contains data
 	if strings.TrimSpace(first.Content) != "" || strings.TrimSpace(first.To) != "" {
@@ -162,15 +149,17 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start ping loop
-	go func(cl *Client) {
+	go func(conn *websocket.Conn) {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := cl.writeControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+				// stop on error, reader goroutine will notice close
 				return
 			}
 		}
-	}(client)
+	}(client.conn)
 
 	// Continue with normal loop
 	go c.handleClient(client)
@@ -199,7 +188,7 @@ func (c *Chat) handleClient(client *Client) {
 			log.Warn().Err(err).Msg("invalid json")
 			continue
 		}
-		claims, err := c.verifyGEWISToken(in.Token) // strict auth per message
+		claims, err := c.verifyGEWISToken(in.Token) // keep strict auth per message
 		if err != nil {
 			log.Warn().Err(err).Msg("invalid GEWIS token")
 			continue
@@ -228,34 +217,19 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage, claims *GEWISClaims)
 
 func (c *Chat) forwardToRadios(msg OutgoingMessage) {
 	data, _ := json.Marshal(msg)
-
-	// snapshot under lock
 	c.mutex.Lock()
-	conns := make([]*Client, 0, len(c.radios))
+	defer c.mutex.Unlock()
 	for r := range c.radios {
-		conns = append(conns, r)
-	}
-	c.mutex.Unlock()
-
-	// write outside lock
-	for _, cl := range conns {
-		_ = cl.writeMessage(websocket.TextMessage, data)
+		_ = r.conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
 
 func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	data, _ := json.Marshal(msg)
-
-	// snapshot under lock
 	c.mutex.Lock()
-	var target *Client
+	defer c.mutex.Unlock()
 	if user, ok := c.users[userID]; ok {
-		target = user
-	}
-	c.mutex.Unlock()
-
-	if target != nil {
-		_ = target.writeMessage(websocket.TextMessage, data)
+		_ = user.conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
 
@@ -279,19 +253,4 @@ func (c *Chat) verifyGEWISToken(tokenStr string) (*GEWISClaims, error) {
 		return nil, errors.New("invalid token")
 	}
 	return claims, nil
-}
-
-// Helpers to ensure single writer to a websocket.Conn
-
-func (cl *Client) writeMessage(messageType int, data []byte) error {
-	cl.writeMu.Lock()
-	defer cl.writeMu.Unlock()
-	_ = cl.conn.SetWriteDeadline(time.Now().Add(writeWait))
-	return cl.conn.WriteMessage(messageType, data)
-}
-
-func (cl *Client) writeControl(messageType int, data []byte, deadline time.Time) error {
-	cl.writeMu.Lock()
-	defer cl.writeMu.Unlock()
-	return cl.conn.WriteControl(messageType, data, deadline)
 }
