@@ -216,12 +216,15 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage, claims *GEWISClaims)
 }
 
 func (c *Chat) forwardToRadios(msg OutgoingMessage) {
+	log.Trace().Str("user", msg.From).Msg("Forwarding message to radios")
 	data, _ := json.Marshal(msg)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	for r := range c.radios {
+		log.Trace().Str("radio", r.id).Msg("Forwarding message to radio")
 		_ = r.conn.WriteMessage(websocket.TextMessage, data)
 	}
+	log.Trace().Str("user", msg.From).Msg("Message forwarded to radios")
 }
 
 func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
