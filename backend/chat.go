@@ -236,14 +236,21 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage) {
 		To:         in.To,
 		Content:    in.Content,
 	}
+
 	if client.role == "user" {
+		// User messages go to all radios
 		c.forwardToRadios(out)
 		return
 	}
-	if out.To == "" {
-		return
+
+	// Radio messages
+	if out.To != "" {
+		// Send to the targeted user
+		c.forwardToUser(out.To, out)
 	}
-	c.forwardToUser(out.To, out)
+
+	// Also mirror to other radios so fellow admins see it
+	c.forwardToOtherRadios(client, out)
 }
 
 func (c *Chat) forwardToRadios(msg OutgoingMessage) {
@@ -260,6 +267,23 @@ func (c *Chat) forwardToRadios(msg OutgoingMessage) {
 		}
 	}
 	log.Trace().Str("user", msg.From).Msg("message forwarded to radios")
+}
+
+func (c *Chat) forwardToOtherRadios(sender *Client, msg OutgoingMessage) {
+	log.Trace().Str("sender", sender.id).Msg("mirroring message to other radios")
+	data, _ := json.Marshal(msg)
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	for r := range c.radios {
+		if r == sender {
+			continue
+		}
+		if err := r.writeMessage(websocket.TextMessage, data); err != nil {
+			log.Warn().Err(err).Str("radio", r.id).Msg("failed to mirror to radio, removing")
+			_ = r.conn.Close()
+			delete(c.radios, r)
+		}
+	}
 }
 
 func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
