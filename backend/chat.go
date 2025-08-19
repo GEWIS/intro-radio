@@ -21,12 +21,28 @@ type Client struct {
 	id         string // lidnr as string
 	givenName  string
 	familyName string
+
+	writeMu sync.Mutex
+}
+
+func (cl *Client) writeMessage(mt int, data []byte) error {
+	cl.writeMu.Lock()
+	defer cl.writeMu.Unlock()
+	_ = cl.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	return cl.conn.WriteMessage(mt, data)
+}
+
+func (cl *Client) writeControl(mt int, data []byte, deadline time.Duration) error {
+	cl.writeMu.Lock()
+	defer cl.writeMu.Unlock()
+	return cl.conn.WriteControl(mt, data, time.Now().Add(deadline))
 }
 
 const (
 	pingPeriod   = 25 * time.Second
 	writeWait    = 10 * time.Second
 	closeTimeout = 1 * time.Second
+	pongWait     = 60 * time.Second
 )
 
 type IncomingMessage struct {
@@ -137,14 +153,21 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		familyName: claims.FamilyName,
 	}
 
+	// Read deadlines and pong handling so dead peers are detected
+	client.conn.SetReadDeadline(time.Now().Add(pongWait))
+	client.conn.SetPongHandler(func(string) error {
+		client.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	// Register client, replacing any existing session with same lidnr
 	c.mutex.Lock()
 	if role == "user" {
 		if prev, ok := c.users[client.id]; ok && prev != nil && prev.conn != nil {
-			_ = prev.conn.WriteControl(
+			_ = prev.writeControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4100, "replaced by new connection"),
-				time.Now().Add(closeTimeout),
+				closeTimeout,
 			)
 			log.Warn().Msg("replacing connection: replaced by new connection")
 			_ = prev.conn.Close()
@@ -163,16 +186,15 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start ping loop
-	go func(conn *websocket.Conn) {
+	go func(cl *Client) {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
 		for range ticker.C {
-			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+			if err := cl.writeControl(websocket.PingMessage, nil, writeWait); err != nil {
 				return
 			}
 		}
-	}(client.conn)
+	}(client)
 
 	// Continue with normal loop
 	go c.handleClient(client)
@@ -231,7 +253,11 @@ func (c *Chat) forwardToRadios(msg OutgoingMessage) {
 	defer c.mutex.Unlock()
 	for r := range c.radios {
 		log.Trace().Str("radio", r.id).Msg("forwarding message to radio")
-		_ = r.conn.WriteMessage(websocket.TextMessage, data)
+		if err := r.writeMessage(websocket.TextMessage, data); err != nil {
+			log.Warn().Err(err).Str("radio", r.id).Msg("failed to forward to radio, removing")
+			_ = r.conn.Close()
+			delete(c.radios, r)
+		}
 	}
 	log.Trace().Str("user", msg.From).Msg("message forwarded to radios")
 }
@@ -239,12 +265,17 @@ func (c *Chat) forwardToRadios(msg OutgoingMessage) {
 func (c *Chat) forwardToUser(userID string, msg OutgoingMessage) {
 	data, _ := json.Marshal(msg)
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	user, ok := c.users[userID]
+	c.mutex.Unlock()
 	log.Trace().Str("user", userID).Msg("trying to forward message to user")
-	if user, ok := c.users[userID]; ok {
-		err := user.conn.WriteMessage(websocket.TextMessage, data)
-		if err == nil {
-			log.Warn().Str("user", userID).Msg("failed to forward message to user")
+	if ok {
+		err := user.writeMessage(websocket.TextMessage, data)
+		if err != nil {
+			log.Warn().Err(err).Str("user", userID).Msg("failed to forward message to user")
+			c.mutex.Lock()
+			_ = user.conn.Close()
+			delete(c.users, userID)
+			c.mutex.Unlock()
 		} else {
 			log.Trace().Str("user", userID).Msg("message forwarded to user")
 		}
