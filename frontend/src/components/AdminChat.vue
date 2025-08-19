@@ -173,21 +173,31 @@ function connect() {
 
   ws.addEventListener('message', (evt: MessageEvent) => {
     const msg = JSON.parse(evt.data) as Outgoing;
-    const from = msg.from;
 
-    if (from && from !== 'radio') {
-      touchUser(from, msg.given_name, msg.family_name);
-      if (activeUser.value !== from) {
-        usersMap.value[from].unread = (usersMap.value[from].unread || 0) + 1;
+    // If there is a "to", it was sent by a radio and mirrored to us
+    const isFromRadio = Boolean(msg.to && msg.to.length > 0);
+    const chatId = isFromRadio ? (msg.to as string) : (msg.from as string);
+    const displayFrom = isFromRadio ? 'radio' : (msg.from as string);
+
+    // Maintain user activity for the chat thread
+    if (chatId && chatId !== 'radio') {
+      // We only have names when the user writes to us
+      if (isFromRadio) {
+        touchUser(chatId);
+      } else {
+        touchUser(chatId, msg.given_name, msg.family_name);
+      }
+      if (activeUser.value !== chatId) {
+        usersMap.value[chatId].unread = (usersMap.value[chatId].unread || 0) + 1;
       }
     }
 
-    if (!chats.value[from]) chats.value[from] = [];
-    chats.value[from].push(msg);
+    if (!chats.value[chatId]) chats.value[chatId] = [];
+    chats.value[chatId].push({ ...msg, from: displayFrom });
 
-    if (!activeUser.value && from !== 'radio') {
-      activeUser.value = from;
-      usersMap.value[from].unread = 0;
+    if (!activeUser.value && chatId && chatId !== 'radio') {
+      activeUser.value = chatId;
+      usersMap.value[chatId].unread = 0;
     }
 
     scrollToBottom();
@@ -204,13 +214,12 @@ async function reconnect() {
   connecting.value = true;
 
   try {
-    // Try to fetch a fresh token if a getter is provided
     if (props.getToken) {
       const fresh = await props.getToken();
       if (fresh) tokenRef.value = fresh;
     }
   } catch {
-    // Ignore token refresh errors and proceed with the last known token
+    // ignore
   } finally {
     try {
       ws?.close();
@@ -239,4 +248,3 @@ function send() {
 onMounted(connect);
 onBeforeUnmount(() => ws?.close());
 </script>
-
