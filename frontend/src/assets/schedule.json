@@ -30,6 +30,16 @@
     "colorDark": "#4F8676"
   },
   {
+    "title": "Electroshock therapy",
+    "subtitle": "Trust us",
+    "icon": "mdi-brain",
+    "iconColor": "blue",
+    "color": "#E3F2FD",
+    "date": "2025-08-20",
+    "time": "18:00 - 19:00",
+    "colorDark": "#3D739A"
+  },
+  {
     "title": "Hot Ones",
     "subtitle": "Please dont sue us for copyright violations",
     "icon": "mdi-food-drumstick",
@@ -38,16 +48,6 @@
     "date": "2025-08-21",
     "time": "11:00 - 12:00",
     "colorDark": "#A53747"
-  },
-  {
-    "title": "Electroshock therapy",
-    "subtitle": "Trust us",
-    "icon": "mdi-brain",
-    "iconColor": "blue",
-    "color": "#E3F2FD",
-    "date": "2025-08-21",
-    "time": "14:00 - 15:00",
-    "colorDark": "#3D739A"
   },
   {
     "title": "DOORHAAL. DONDERDAG.",
