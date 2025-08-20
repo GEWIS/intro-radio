@@ -42,9 +42,20 @@
             style="min-height: 50vh; max-height: 70vh"
           >
             <template v-if="!isClosed">
-              <div v-for="(m, i) in activeMessages" :key="i" class="my-1">
-                <strong>[{{ m.from === 'radio' ? 'Radio' : usersMap[m.from]?.givenName || m.from }}]</strong>
-                <span class="ml-2">{{ m.content }}</span>
+              <div v-for="(m, i) in activeMessages" :key="i" class="my-1 d-flex">
+                <!-- Timestamp -->
+                <div class="text-caption font-mono mr-2" style="width: 48px; text-align: right">
+                  {{ formatTime(m.ts) }}
+                </div>
+
+                <!-- Vertical separator -->
+                <v-divider class="mx-3" style="align-self: stretch" :thickness="2" vertical />
+
+                <!-- Message body -->
+                <div class="flex-grow-1">
+                  <strong>[{{ m.from === 'radio' ? 'Radio' : usersMap[m.from]?.givenName || m.from }}]</strong>
+                  <span class="ml-2">{{ m.content }}</span>
+                </div>
               </div>
             </template>
             <template v-else>
@@ -87,6 +98,7 @@ type Outgoing = {
 };
 type Incoming = { token?: string; to?: string; content?: string; radioKey?: string };
 type ChatUser = { id: string; givenName: string; familyName: string; unread: number; lastActivity: number };
+type ChatMessage = Outgoing & { ts: number };
 
 const props = defineProps<{
   token: string;
@@ -98,7 +110,7 @@ const props = defineProps<{
 const tokenRef = ref(props.token);
 watch(
   () => props.token,
-  v => {
+  (v) => {
     if (v) tokenRef.value = v;
   },
 );
@@ -108,7 +120,7 @@ const connecting = ref(false);
 const isClosed = ref(false);
 const messagesBox = ref<HTMLDivElement | null>(null);
 
-const chats = ref<Record<string, Outgoing[]>>({});
+const chats = ref<Record<string, ChatMessage[]>>({});
 const usersMap = ref<Record<string, ChatUser>>({});
 
 const users = computed<ChatUser[]>(() =>
@@ -133,6 +145,11 @@ let ws: WebSocket | null = null;
 
 function formatLast(ts: number) {
   if (!ts) return 'no activity';
+  const d = new Date(ts);
+  return d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' });
+}
+function formatTime(ts?: number) {
+  if (!ts) return '';
   const d = new Date(ts);
   return d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' });
 }
@@ -193,7 +210,7 @@ function connect() {
     }
 
     if (!chats.value[chatId]) chats.value[chatId] = [];
-    chats.value[chatId].push({ ...msg, from: displayFrom });
+    chats.value[chatId].push({ ...msg, from: displayFrom, ts: Date.now() });
 
     if (!activeUser.value && chatId && chatId !== 'radio') {
       activeUser.value = chatId;
@@ -238,7 +255,7 @@ function send() {
   ws.send(JSON.stringify(payload));
 
   if (!chats.value[to]) chats.value[to] = [];
-  chats.value[to].push({ from: 'radio', to, content });
+  chats.value[to].push({ from: 'radio', to, content, ts: Date.now() });
 
   touchUser(to);
   input.value = '';
