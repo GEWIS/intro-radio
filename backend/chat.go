@@ -286,6 +286,24 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage) {
 	c.forwardToOtherRadios(client, out)
 }
 
+// Shutdown closes every currently connected client with a "going away"
+// close frame. http.Server.Shutdown does not attempt to close or wait for
+// hijacked connections such as WebSockets, so the caller (main) is
+// responsible for notifying and closing them; this does that.
+func (c *Chat) Shutdown() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down")
+	for _, u := range c.users {
+		_ = u.writeControl(websocket.CloseMessage, closeMsg, closeTimeout)
+		_ = u.conn.Close()
+	}
+	for r := range c.radios {
+		_ = r.writeControl(websocket.CloseMessage, closeMsg, closeTimeout)
+		_ = r.conn.Close()
+	}
+}
+
 func (c *Chat) forwardToRadios(msg OutgoingMessage) {
 	log.Trace().Str("user", msg.From).Msg("forwarding message to radios")
 	data, _ := json.Marshal(msg)

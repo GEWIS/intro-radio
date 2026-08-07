@@ -335,6 +335,42 @@ func TestInvalidLidnrRejected(t *testing.T) {
 	}
 }
 
+func TestShutdownClosesConnectedClients(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	userTok := makeToken(t, GEWISSecret, 11111, "Hank", "User", time.Minute)
+	radioTok := makeToken(t, GEWISSecret, 22222, "Ivy", "Radio", time.Minute)
+
+	user := dialAndHandshake(t, wsBase, "user", userTok, "")
+	defer user.Close()
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
+	defer radio.Close()
+
+	// Give the server a moment to finish registering both connections
+	// before triggering shutdown.
+	time.Sleep(100 * time.Millisecond)
+
+	chat.Shutdown()
+
+	for name, c := range map[string]*websocket.Conn{"user": user, "radio": radio} {
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, _, err := c.ReadMessage()
+		if err == nil {
+			t.Fatalf("%s: expected connection to be closed after Shutdown", name)
+		}
+		if !websocket.IsCloseError(err, websocket.CloseGoingAway) {
+			if !(websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) && strings.Contains(err.Error(), "1006")) {
+				t.Fatalf("%s: expected close code %d, got: %v", name, websocket.CloseGoingAway, err)
+			}
+		}
+	}
+}
+
 // Optional: ensure goroutines have time to settle to reduce flakiness on CI
 func TestMain(m *testing.M) {
 	m.Run()
