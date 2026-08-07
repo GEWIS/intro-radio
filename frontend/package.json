@@ -31,9 +31,9 @@
     "@mdi/font": "7.4.47",
     "@typescript-eslint/parser": "^8.39.0",
     "dompurify": "^3.2.6",
-    "hls.js": "^1.6.8",
+    "hls.js": "^1.6.16",
     "marked": "^16.1.2",
-    "vue": "^3.5.13",
+    "vue": "^3.5.40",
     "vue-eslint-parser": "^10.2.0",
     "vuetify": "^3.8.1"
   },
