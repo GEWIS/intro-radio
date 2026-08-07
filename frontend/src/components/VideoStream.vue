@@ -14,6 +14,11 @@
       </v-btn>
       <div class="text-caption text-secondary font-weight-medium">Video streaming may use significant data</div>
     </div>
+    <div v-else-if="hasError" class="d-flex flex-column align-center py-8 text-center">
+      <v-icon class="mb-2" color="error" icon="mdi-alert-circle-outline" size="40" />
+      <div class="text-body-2 mb-3">Unable to load the video stream.</div>
+      <v-btn color="primary" prepend-icon="mdi-refresh" variant="tonal" @click="retry">Try again</v-btn>
+    </div>
     <video
       v-else
       ref="video"
@@ -23,13 +28,14 @@
       :poster="poster"
       style="width: 100%; border-radius: 8px"
       title="Radio Livestream"
+      @error="handleVideoError"
     />
   </v-card>
 </template>
 
 <script setup lang="ts">
 import Hls from 'hls.js';
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps<{
   src: string;
@@ -38,10 +44,13 @@ const props = defineProps<{
 
 const video = ref<HTMLVideoElement | null>(null);
 const started = ref(false);
+const hasError = ref(false);
 
 const isMobile = computed(() =>
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
 );
+
+let hls: Hls | null = null;
 
 function startStream() {
   started.value = true;
@@ -51,17 +60,45 @@ function startStream() {
   });
 }
 
-function setupStream() {
-  if (video.value) {
-    if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(props.src);
-      hls.attachMedia(video.value);
-    } else if (video.value.canPlayType('application/vnd.apple.mpegurl')) {
-      video.value.src = props.src;
-    }
-    video.value.play().catch(() => {});
+function destroyHls() {
+  if (hls) {
+    hls.destroy();
+    hls = null;
   }
+}
+
+function setupStream() {
+  if (!video.value) return;
+
+  hasError.value = false;
+  destroyHls();
+
+  if (Hls.isSupported()) {
+    hls = new Hls();
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) {
+        console.error('Fatal Hls.js error', data);
+        hasError.value = true;
+        destroyHls();
+      }
+    });
+    hls.loadSource(props.src);
+    hls.attachMedia(video.value);
+  } else if (video.value.canPlayType('application/vnd.apple.mpegurl')) {
+    video.value.src = props.src;
+  }
+  video.value.play().catch(() => {});
+}
+
+async function retry() {
+  hasError.value = false;
+  await nextTick();
+  setupStream();
+}
+
+function handleVideoError() {
+  // Fired for native (non-Hls.js) playback failures, e.g. Safari's built-in HLS support.
+  hasError.value = true;
 }
 
 onMounted(() => {
@@ -69,6 +106,10 @@ onMounted(() => {
     started.value = true;
     setupStream();
   }
+});
+
+onBeforeUnmount(() => {
+  destroyHls();
 });
 </script>
 <style scoped>
