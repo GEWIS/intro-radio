@@ -32,7 +32,7 @@
     "@typescript-eslint/parser": "^8.65.0",
     "dompurify": "^3.4.12",
     "hls.js": "^1.6.16",
-    "marked": "^16.1.2",
+    "marked": "^16.4.2",
     "vue": "^3.5.40",
     "vue-eslint-parser": "^10.2.0",
     "vuetify": "^3.13.0"
