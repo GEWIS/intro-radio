@@ -1,7 +1,7 @@
 <template>
   <v-container class="fill-height" max-width="900">
     <div>
-      <v-img class="mb-4" height="150" src="@/assets/logo.png" />
+      <v-img alt="GEWIS Radio logo" class="mb-4" height="150" src="@/assets/logo.png" />
 
       <div class="mb-8 text-center">
         <div class="text-body-1 font-weight-light mb-n1 gloria-hallelujah-regular">Welcome to</div>
@@ -35,11 +35,15 @@
             v-else
             class="py-4"
             color="surface-variant"
+            role="button"
             rounded="lg"
             subtitle="Start a chat with the radio"
+            tabindex="0"
             title="Radio chat"
             variant="tonal"
             @click="startChatFlow"
+            @keydown.enter.prevent="startChatFlow"
+            @keydown.space.prevent="startChatFlow"
           >
             <template #prepend>
               <v-icon class="px-5" icon="mdi-account-group-outline" />
@@ -78,7 +82,7 @@
           >
             <template #prepend>
               <div v-if="link.image" class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
-                <v-img class="object-cover" height="32" :src="link.image" width="32" />
+                <v-img :alt="link.imageAlt" class="object-cover" height="32" :src="link.image" width="32" />
               </div>
               <v-icon v-else :icon="link.icon" />
             </template>
@@ -124,6 +128,7 @@ const links = [
   {
     href: 'https://gewis.nl/',
     image: 'https://gewis.nl/corporateidentity/public/logo/PNG/Base_Logo_Black.png',
+    imageAlt: 'GEWIS logo',
     subtitle: 'Find the latest photos and information about GEWIS.',
     title: 'GEWIS Website',
   },

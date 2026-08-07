@@ -11,8 +11,12 @@
       class="py-4"
       color="primary"
       :prepend-icon="isPlaying ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'"
+      role="button"
       rounded="lg"
-      @click="isPlaying ? stop() : play()"
+      tabindex="0"
+      @click="toggle"
+      @keydown.enter.prevent="toggle"
+      @keydown.space.prevent="toggle"
     >
       <template #title>
         <h2 class="text-h5 font-weight-bold">
@@ -132,6 +136,14 @@ function handleStreamError() {
   hasError.value = true;
   errorMessage.value = 'Something went wrong playing the stream. Please try again.';
   stop();
+}
+
+function toggle() {
+  if (isPlaying.value) {
+    stop();
+  } else {
+    play();
+  }
 }
 
 onMounted(() => {

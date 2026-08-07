@@ -1,5 +1,15 @@
 <template>
-  <v-card class="pa-4 mb-4" rounded="lg" style="cursor: pointer" @click="expanded = !expanded">
+  <v-card
+    :aria-expanded="expanded"
+    class="pa-4 mb-4"
+    role="button"
+    rounded="lg"
+    style="cursor: pointer"
+    tabindex="0"
+    @click="toggle"
+    @keydown.enter.prevent="toggle"
+    @keydown.space.prevent="toggle"
+  >
     <div class="d-flex align-center">
       <v-icon class="mr-3" color="primary">mdi-calendar-star</v-icon>
       <span class="text-h5">Radio Schedule</span>
@@ -49,6 +59,11 @@ import { useDarkMode } from '@/composables/useDarkMode.ts';
 const { isDark } = useDarkMode();
 
 const expanded = ref(false);
+
+function toggle() {
+  expanded.value = !expanded.value;
+}
+
 type Event = {
   title: string;
   subtitle: string;
