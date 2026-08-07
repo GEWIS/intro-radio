@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -58,5 +60,95 @@ func TestServerTimeoutsDoNotKillWebSocket(t *testing.T) {
 	}
 	if out.Content != "still alive" {
 		t.Fatalf("unexpected message: %+v", out)
+	}
+}
+
+func TestHealthHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+
+	healthHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected application/json content type, got %q", ct)
+	}
+	if body := rec.Body.String(); body != `{"status":"ok"}` {
+		t.Fatalf("unexpected body: %q", body)
+	}
+}
+
+func TestTokenHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/token", nil)
+
+	tokenHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var got string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got != token {
+		t.Fatalf("expected token %q, got %q", token, got)
+	}
+}
+
+func TestRadioHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/radio", nil)
+
+	radioHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var got RadioInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	want := RadioInfo{
+		VideoURL:        videoURL,
+		AudioURL:        audioURL,
+		AudioMountPoint: audioMountPoint,
+		StartTime:       radioStartTime,
+	}
+	if got != want {
+		t.Fatalf("expected %+v, got %+v", want, got)
+	}
+}
+
+func TestNewMuxRoutesRegistered(t *testing.T) {
+	chat := NewChat()
+	mux := newMux(chat)
+
+	for _, path := range []string{"/api/v1/health", "/api/v1/token", "/api/v1/radio"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected status 200, got %d", path, rec.Code)
+		}
+	}
+}
+
+func TestNewHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(":0", http.NewServeMux())
+
+	if srv.ReadHeaderTimeout != readHeaderTimeout {
+		t.Fatalf("ReadHeaderTimeout: expected %v, got %v", readHeaderTimeout, srv.ReadHeaderTimeout)
+	}
+	if srv.ReadTimeout != readTimeout {
+		t.Fatalf("ReadTimeout: expected %v, got %v", readTimeout, srv.ReadTimeout)
+	}
+	if srv.WriteTimeout != writeTimeout {
+		t.Fatalf("WriteTimeout: expected %v, got %v", writeTimeout, srv.WriteTimeout)
+	}
+	if srv.IdleTimeout != idleTimeout {
+		t.Fatalf("IdleTimeout: expected %v, got %v", idleTimeout, srv.IdleTimeout)
 	}
 }

@@ -335,6 +335,60 @@ func TestInvalidLidnrRejected(t *testing.T) {
 	}
 }
 
+func TestInvalidRadioKeyRejected(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	radioTok := makeToken(t, GEWISSecret, 44444, "Jack", "Radio", time.Minute)
+	c := dialAndHandshake(t, wsBase, "radio", radioTok, "wrong-key")
+	defer c.Close()
+
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := c.ReadMessage()
+	if err == nil {
+		t.Fatal("expected close after invalid radio key")
+	}
+	if !websocket.IsCloseError(err, 4103) {
+		if !(websocket.IsUnexpectedCloseError(err, 4103) && strings.Contains(err.Error(), "1006")) {
+			t.Fatalf("expected close code 4103, got: %v", err)
+		}
+	}
+}
+
+func TestMalformedJSONHandshakeCloses(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	u, _ := url.Parse(wsBase)
+	q := u.Query()
+	q.Set("role", "user")
+	u.RawQuery = q.Encode()
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+
+	// Not valid JSON at all.
+	if err := c.WriteMessage(websocket.TextMessage, []byte("not json")); err != nil {
+		t.Fatalf("write malformed handshake: %v", err)
+	}
+
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, rerr := c.ReadMessage()
+	if rerr == nil {
+		t.Fatal("expected close after malformed JSON handshake")
+	}
+}
+
 func TestShutdownClosesConnectedClients(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "ChangeMe"
