@@ -246,6 +246,95 @@ func TestInvalidTokenHandshakeCloses(t *testing.T) {
 	}
 }
 
+func TestHandshakeReadDeadlineFires(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	// Set once, before the server (and any connection goroutines) start, so
+	// there's no concurrent access to this field.
+	chat.handshakeTimeout = 200 * time.Millisecond
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	u, _ := url.Parse(wsBase)
+	q := u.Query()
+	q.Set("role", "user")
+	u.RawQuery = q.Encode()
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+
+	// Deliberately never send the handshake frame. The server should give up
+	// waiting and close the connection rather than hold it open forever.
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, rerr := c.ReadMessage()
+	if rerr == nil {
+		t.Fatal("expected connection to be closed after handshake timeout")
+	}
+}
+
+func TestOversizedMessageRejected(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	u, _ := url.Parse(wsBase)
+	q := u.Query()
+	q.Set("role", "user")
+	u.RawQuery = q.Encode()
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+
+	// Handshake frame that exceeds the server's read limit should get the
+	// connection closed rather than accepted.
+	oversized := IncomingMessage{
+		Token:   makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute),
+		Content: strings.Repeat("a", maxMessageBytes+1),
+	}
+	if err := c.WriteJSON(oversized); err != nil {
+		t.Fatalf("write oversized message: %v", err)
+	}
+
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, rerr := c.ReadMessage()
+	if rerr == nil {
+		t.Fatal("expected connection to be closed after oversized message")
+	}
+}
+
+func TestInvalidLidnrRejected(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	// lidnr of 0 must be rejected at handshake.
+	tok := makeToken(t, GEWISSecret, 0, "Nobody", "User", time.Minute)
+	c := dialAndHandshake(t, wsBase, "user", tok, "")
+	defer c.Close()
+
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := c.ReadMessage()
+	if err == nil {
+		t.Fatal("expected close after invalid lidnr")
+	}
+	if !websocket.IsCloseError(err, 4101) {
+		if !(websocket.IsUnexpectedCloseError(err, 4101) && strings.Contains(err.Error(), "1006")) {
+			t.Fatalf("expected close code 4101, got: %v", err)
+		}
+	}
+}
+
 // Optional: ensure goroutines have time to settle to reduce flakiness on CI
 func TestMain(m *testing.M) {
 	m.Run()

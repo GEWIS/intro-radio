@@ -39,10 +39,12 @@ func (cl *Client) writeControl(mt int, data []byte, deadline time.Duration) erro
 }
 
 const (
-	pingPeriod   = 25 * time.Second
-	writeWait    = 10 * time.Second
-	closeTimeout = 1 * time.Second
-	pongWait     = 60 * time.Second
+	pingPeriod              = 25 * time.Second
+	writeWait               = 10 * time.Second
+	closeTimeout            = 1 * time.Second
+	pongWait                = 60 * time.Second
+	maxMessageBytes         = 32 * 1024
+	defaultHandshakeTimeout = 10 * time.Second
 )
 
 type IncomingMessage struct {
@@ -82,6 +84,12 @@ func envOr(k, def string) string {
 type Chat struct {
 	upgrader websocket.Upgrader
 
+	// handshakeTimeout bounds how long HandleWS waits for the handshake
+	// frame after a successful upgrade. It lives on the instance (rather
+	// than as a package-level constant) so tests can shrink it for a
+	// single Chat without racing other connections that read it.
+	handshakeTimeout time.Duration
+
 	mutex  sync.Mutex
 	users  map[string]*Client   // id -> client
 	radios map[*Client]struct{} // radio connections
@@ -92,8 +100,9 @@ func NewChat() *Chat {
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
-		users:  make(map[string]*Client),
-		radios: make(map[*Client]struct{}),
+		handshakeTimeout: defaultHandshakeTimeout,
+		users:            make(map[string]*Client),
+		radios:           make(map[*Client]struct{}),
 	}
 }
 
@@ -107,6 +116,19 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := c.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Warn().Err(err).Msg("websocket upgrade failed")
+		return
+	}
+
+	// Bound the size of any single message (handshake included) to avoid
+	// unbounded memory growth from a hostile or buggy client.
+	conn.SetReadLimit(maxMessageBytes)
+
+	// Bound how long we wait for the handshake frame so a client that
+	// completes the upgrade and then never sends anything can't pin a
+	// goroutine and socket forever.
+	if err := conn.SetReadDeadline(time.Now().Add(c.handshakeTimeout)); err != nil {
+		log.Warn().Err(err).Msg("failed to set handshake read deadline")
+		_ = conn.Close()
 		return
 	}
 
@@ -127,6 +149,17 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	claims, err := c.verifyGEWISTokenHandshake(first.Token)
 	if err != nil {
 		log.Warn().Err(err).Msg("closing connection: invalid token at handshake")
+		_ = conn.Close()
+		return
+	}
+
+	if claims.Lidnr <= 0 {
+		_ = conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(4101, "invalid lidnr"),
+			time.Now().Add(closeTimeout),
+		)
+		log.Warn().Int("lidnr", claims.Lidnr).Msg("closing connection: invalid lidnr")
 		_ = conn.Close()
 		return
 	}
