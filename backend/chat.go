@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -165,7 +166,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "radio" {
-		if RADIOChatKey == "" || first.RadioKey != RADIOChatKey {
+		if RADIOChatKey == "" || subtle.ConstantTimeCompare([]byte(first.RadioKey), []byte(RADIOChatKey)) != 1 {
 			_ = conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
