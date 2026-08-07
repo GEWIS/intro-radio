@@ -180,7 +180,8 @@ function selectUser(id: string) {
 
 function connect() {
   connecting.value = true;
-  ws = new WebSocket(`wss://${window.location.host}/ws?role=radio`);
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?role=radio`);
 
   ws.addEventListener('open', () => {
     isClosed.value = false;

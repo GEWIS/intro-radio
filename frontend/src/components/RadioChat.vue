@@ -48,7 +48,8 @@ function connect() {
     return;
   }
 
-  socket = new WebSocket('wss://' + window.location.host + '/ws?role=user');
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws?role=user`);
 
   socket.addEventListener('open', () => {
     isClosed.value = false;
