@@ -24,7 +24,7 @@ type RadioInfo struct {
 var (
 	port            = String("PORT", ":8080")
 	videoURL        = String("RADIO_VIDEO_URL", "https://hd-auth.skylinewebcams.com/live.m3u8?a=2j5v70ov5ng6jq544ji0u6kjh3")
-	audioURL        = String("RADIO_AUDIO_URL", "bata-radio.snt.utwente.nl")
+	audioURL        = String("RADIO_AUDIO_URL", "https://bata-radio.snt.utwente.nl")
 	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/high")
 	radioStartTime  = String("RADIO_START_TIME", "2025-08-18T07:00:00Z")
 	token           = String("RADIO_GEWIS_TOKEN", "gewis-radio")
