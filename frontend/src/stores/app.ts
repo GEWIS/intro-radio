@@ -33,7 +33,7 @@ export const useAppStore = defineStore('app', {
 
   actions: {
     async fetchRadioInfo() {
-      return fetch('api/v1/radio')
+      return fetch('/api/v1/radio')
         .then((res) => res.json())
         .then((data) => {
           this.radio.videoUrl = data.videoUrl;
@@ -48,7 +48,7 @@ export const useAppStore = defineStore('app', {
     },
 
     async fetchToken() {
-      return fetch('api/v1/token')
+      return fetch('/api/v1/token')
         .then((res) => res.json())
         .then((data) => {
           this.token = data;
