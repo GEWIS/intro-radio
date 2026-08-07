@@ -9,13 +9,12 @@ func init() {
 	godotenv.Load()
 }
 
-// String retrieves a string from the environment. If not found, writes the
-// fallback value to the environment, before returning it.
-func String(env, fb string) (r string) {
-	r = fb
-	if v, exists := os.LookupEnv(env); exists {
-		r = v
+// String retrieves the value of the environment variable named env. If it
+// is unset, or set to an empty string, the fallback value fb is returned
+// instead. It does not modify the environment.
+func String(env, fb string) string {
+	if v := os.Getenv(env); v != "" {
+		return v
 	}
-
-	return
+	return fb
 }

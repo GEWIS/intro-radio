@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,16 +70,9 @@ type GEWISClaims struct {
 }
 
 var (
-	GEWISSecret  = envOr("GEWIS_SECRET", "ChangeMe")
-	RADIOChatKey = envOr("RADIO_CHAT_KEY", "ChangeMe")
+	GEWISSecret  = String("GEWIS_SECRET", "ChangeMe")
+	RADIOChatKey = String("RADIO_CHAT_KEY", "ChangeMe")
 )
-
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
 
 type Chat struct {
 	upgrader websocket.Upgrader
@@ -166,7 +158,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "radio" {
-		if RADIOChatKey == "" || subtle.ConstantTimeCompare([]byte(first.RadioKey), []byte(RADIOChatKey)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(first.RadioKey), []byte(RADIOChatKey)) != 1 {
 			_ = conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
