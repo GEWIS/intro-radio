@@ -1,4 +1,4 @@
-FROM node:20-bookworm AS builder
+FROM node:25-bookworm AS builder
 
 WORKDIR /app
 COPY yarn.lock .
@@ -6,7 +6,7 @@ COPY package.json .
 
 RUN yarn install --frozen-lockfile
 
-FROM node:20-bookworm AS base
+FROM node:25-bookworm AS base
 
 WORKDIR /app
 COPY . .
