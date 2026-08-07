@@ -21,10 +21,10 @@
       class="mt-2"
       :disabled="isClosed"
       placeholder="Type your message..."
-      @keydown.enter="send"
+      @keydown.enter="sendMessage"
     />
 
-    <v-btn v-if="!isClosed" block color="primary" @click="send">Send</v-btn>
+    <v-btn v-if="!isClosed" block color="primary" @click="sendMessage">Send</v-btn>
 
     <v-btn v-else block color="secondary" @click="connect">Reconnect</v-btn>
   </v-card>
@@ -32,49 +32,32 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useChatSocket } from '@/composables/useChatSocket';
+import { useGewisAuth } from '@/composables/useGewisAuth';
+
+type Incoming = { content: string };
 
 const input = ref('');
 const messages = ref<{ from: string; content: string }[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
-const isClosed = ref(false);
 
-let socket: WebSocket | null = null;
-const token = localStorage.getItem('token') || '';
+const { getToken } = useGewisAuth();
 
-function connect() {
-  if (socket) socket.close();
-  if (!token) {
-    console.error('No token found in localStorage');
-    return;
-  }
-
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws?role=user`);
-
-  socket.addEventListener('open', () => {
-    isClosed.value = false;
-    // Send handshake with token
-    socket?.send(JSON.stringify({ token }));
-  });
-
-  socket.addEventListener('message', (event: MessageEvent) => {
-    const msg = JSON.parse(event.data);
+const { isClosed, connect, disconnect, send } = useChatSocket<Incoming>({
+  path: '/ws?role=user',
+  getToken: () => getToken(),
+  buildHandshake: (token) => ({ token }),
+  onMessage: (msg) => {
     messages.value.push({ from: 'radio', content: msg.content });
     scrollToBottom();
-  });
+  },
+});
 
-  socket.addEventListener('close', () => {
-    isClosed.value = true;
-    messages.value = [];
-    console.log('Socket closed');
-  });
-}
-
-function send() {
-  if (!input.value.trim() || !socket || isClosed.value) return;
+function sendMessage() {
+  if (!input.value.trim() || isClosed.value) return;
 
   const content = input.value.trim();
-  socket.send(JSON.stringify({ token, content }));
+  if (!send({ content })) return;
   messages.value.push({ from: 'you', content });
   input.value = '';
   scrollToBottom();
@@ -89,5 +72,5 @@ function scrollToBottom() {
 }
 
 onMounted(connect);
-onBeforeUnmount(() => socket?.close());
+onBeforeUnmount(disconnect);
 </script>

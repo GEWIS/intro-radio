@@ -35,7 +35,7 @@
       </div>
 
       <!-- Admin chat -->
-      <AdminChat v-else-if="stage === 'ready'" :radio-key="radioKey!" :token="token!" />
+      <AdminChat v-else-if="stage === 'ready'" :radio-key="radioKey!" />
     </div>
   </v-container>
 </template>

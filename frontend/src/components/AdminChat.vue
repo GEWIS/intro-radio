@@ -32,7 +32,7 @@
               <span class="font-weight-medium">Chat with:</span>
               <span class="ml-2">{{ activeUserTitle }}</span>
             </div>
-            <v-btn :loading="connecting" size="small" variant="text" @click="reconnect">Reconnect</v-btn>
+            <v-btn :loading="connecting" size="small" variant="text" @click="connect">Reconnect</v-btn>
           </v-card-title>
           <v-divider />
 
@@ -87,7 +87,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useChatSocket } from '@/composables/useChatSocket';
+import { useGewisAuth } from '@/composables/useGewisAuth';
 
 type Outgoing = {
   from: string;
@@ -96,28 +98,16 @@ type Outgoing = {
   given_name?: string;
   family_name?: string;
 };
-type Incoming = { token?: string; to?: string; content?: string; radioKey?: string };
 type ChatUser = { id: string; givenName: string; familyName: string; unread: number; lastActivity: number };
 type ChatMessage = Outgoing & { ts: number };
 
 const props = defineProps<{
-  token: string;
   radioKey: string;
-  /** Optional async getter that returns a fresh token */
-  getToken?: () => Promise<string>;
 }>();
 
-const tokenRef = ref(props.token);
-watch(
-  () => props.token,
-  (v) => {
-    if (v) tokenRef.value = v;
-  },
-);
+const { getToken } = useGewisAuth();
 
 const input = ref('');
-const connecting = ref(false);
-const isClosed = ref(false);
 const messagesBox = ref<HTMLDivElement | null>(null);
 
 const chats = ref<Record<string, ChatMessage[]>>({});
@@ -140,8 +130,6 @@ const activeUserTitle = computed(() => {
   if (!u) return activeUser.value;
   return `${u.givenName} ${u.familyName} (${u.id})`;
 });
-
-let ws: WebSocket | null = null;
 
 function formatLast(ts: number) {
   if (!ts) return 'no activity';
@@ -178,24 +166,15 @@ function selectUser(id: string) {
   scrollToBottom();
 }
 
-function connect() {
-  connecting.value = true;
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?role=radio`);
-
-  ws.addEventListener('open', () => {
-    isClosed.value = false;
-    ws?.send(JSON.stringify({ token: tokenRef.value, radioKey: props.radioKey }));
-    connecting.value = false;
-  });
-
-  ws.addEventListener('message', (evt: MessageEvent) => {
-    const msg = JSON.parse(evt.data) as Outgoing;
-
+const { isClosed, connecting, connect, disconnect, send: sendRaw } = useChatSocket<Outgoing>({
+  path: '/ws?role=radio',
+  getToken: () => getToken(),
+  buildHandshake: (token) => ({ token, radioKey: props.radioKey }),
+  onMessage: (msg) => {
     // If there is a "to", it was sent by a radio and mirrored to us
     const isFromRadio = Boolean(msg.to && msg.to.length > 0);
-    const chatId = isFromRadio ? (msg.to as string) : (msg.from as string);
-    const displayFrom = isFromRadio ? 'radio' : (msg.from as string);
+    const chatId = isFromRadio ? (msg.to as string) : msg.from;
+    const displayFrom = isFromRadio ? 'radio' : msg.from;
 
     // Maintain user activity for the chat thread
     if (chatId && chatId !== 'radio') {
@@ -219,41 +198,16 @@ function connect() {
     }
 
     scrollToBottom();
-  });
-
-  ws.addEventListener('close', () => {
-    isClosed.value = true;
-    connecting.value = false;
-  });
-}
-
-async function reconnect() {
-  if (connecting.value) return;
-  connecting.value = true;
-
-  try {
-    if (props.getToken) {
-      const fresh = await props.getToken();
-      if (fresh) tokenRef.value = fresh;
-    }
-  } catch {
-    // ignore
-  } finally {
-    try {
-      ws?.close();
-    } catch {}
-    connect();
-  }
-}
+  },
+});
 
 function send() {
-  if (!ws || isClosed.value || !activeUser.value) return;
+  if (isClosed.value || !activeUser.value) return;
   const content = input.value.trim();
   if (!content) return;
 
   const to = activeUser.value;
-  const payload: Incoming = { token: tokenRef.value, to, content };
-  ws.send(JSON.stringify(payload));
+  if (!sendRaw({ to, content })) return;
 
   if (!chats.value[to]) chats.value[to] = [];
   chats.value[to].push({ from: 'radio', to, content, ts: Date.now() });
@@ -264,5 +218,5 @@ function send() {
 }
 
 onMounted(connect);
-onBeforeUnmount(() => ws?.close());
+onBeforeUnmount(disconnect);
 </script>
