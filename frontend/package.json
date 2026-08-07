@@ -35,7 +35,7 @@
     "marked": "^16.1.2",
     "vue": "^3.5.40",
     "vue-eslint-parser": "^10.2.0",
-    "vuetify": "^3.8.1"
+    "vuetify": "^3.13.0"
   },
   "devDependencies": {
     "@gewis/eslint-config-typescript": "^2.4.0",
