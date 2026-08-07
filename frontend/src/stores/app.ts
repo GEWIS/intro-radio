@@ -51,7 +51,7 @@ export const useAppStore = defineStore('app', {
       return fetch('api/v1/token')
         .then((res) => res.json())
         .then((data) => {
-          this.token = data.token;
+          this.token = data;
           return this.token;
         })
         .catch((error) => {
