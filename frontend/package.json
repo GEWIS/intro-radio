@@ -28,6 +28,7 @@
     "format:fix": "prettier --write ."
   },
   "dependencies": {
+    "@fontsource/gloria-hallelujah": "5.3.0",
     "@fontsource/roboto": "5.3.0",
     "@mdi/font": "7.4.47",
     "dompurify": "^3.4.12",

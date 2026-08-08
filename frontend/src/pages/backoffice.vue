@@ -45,6 +45,7 @@
 import { onMounted, ref } from 'vue';
 import AdminChat from '@/components/AdminChat.vue';
 import { useGewisAuth } from '@/composables/useGewisAuth';
+import { validateRadioKeyQuick } from '@/composables/useRadioKeyValidation';
 
 type Stage = 'auth' | 'need-key' | 'ready';
 
@@ -93,67 +94,5 @@ async function validateKey() {
   } else {
     errorMsg.value = 'Invalid key or connection failed. Try again.';
   }
-}
-
-// Opens a WS as radio, sends handshake, and resolves true if the server does not close it immediately.
-function validateRadioKeyQuick(tok: string, key: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let timer: number | null = null;
-
-    const safeResolve = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      // close is handled in cleanup
-      resolve(ok);
-    };
-
-    try {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?role=radio`);
-
-      const handleOpen = () => {
-        ws.send(JSON.stringify({ token: tok, radioKey: key }));
-        // If it stays open briefly, assume valid
-        timer = window.setTimeout(() => {
-          cleanup();
-          try {
-            ws.close();
-          } catch {}
-          safeResolve(true);
-        }, 200);
-      };
-
-      const handleClose = () => {
-        cleanup();
-        safeResolve(false);
-      };
-
-      const handleError = () => {
-        cleanup();
-        safeResolve(false);
-      };
-
-      const cleanup = () => {
-        ws.removeEventListener('open', handleOpen);
-        ws.removeEventListener('close', handleClose);
-        ws.removeEventListener('error', handleError);
-        if (timer !== null) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      };
-
-      ws.addEventListener('open', handleOpen);
-      ws.addEventListener('close', handleClose);
-      ws.addEventListener('error', handleError);
-    } catch {
-      safeResolve(false);
-    }
-  });
 }
 </script>
