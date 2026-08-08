@@ -7,8 +7,7 @@
 
 # Intro Radio
 
-[![Lint and build](https://github.com/GEWIS/intro-radio/actions/workflows/lint-and-build.yml/badge.svg)](https://github.com/GEWIS/intro-radio/actions/workflows/lint-and-build.yml)
-[![Docker Build](https://github.com/GEWIS/intro-radio/actions/workflows/docker-build.yml/badge.svg)](https://github.com/GEWIS/intro-radio/actions/workflows/docker-build.yml)
+[![CI](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml/badge.svg)](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 Intro Radio is GEWIS's live stream (Icecast/HLS audio and video) for the student association's introduction week, with a built-in chat between listeners and radio staff and an admin backoffice for staff to manage those conversations.
