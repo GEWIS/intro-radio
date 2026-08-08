@@ -72,6 +72,15 @@ type GEWISClaims struct {
 var (
 	GEWISSecret  = String("GEWIS_SECRET", "ChangeMe")
 	RADIOChatKey = String("RADIO_CHAT_KEY", "ChangeMe")
+
+	// AllowedOrigins is the set of Origin header values NewChat's upgrader
+	// accepts for WebSocket handshakes. It defaults to the production
+	// frontend and the local Vite dev server; override with a
+	// comma-separated ALLOWED_ORIGINS env var for other environments.
+	AllowedOrigins = StringSlice("ALLOWED_ORIGINS", []string{
+		"https://radio.gewis.nl",
+		"http://localhost:3000",
+	})
 )
 
 type Chat struct {
@@ -91,12 +100,31 @@ type Chat struct {
 func NewChat() *Chat {
 	return &Chat{
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: checkOriginAllowed,
 		},
 		handshakeTimeout: defaultHandshakeTimeout,
 		users:            make(map[string]*Client),
 		radios:           make(map[*Client]struct{}),
 	}
+}
+
+// checkOriginAllowed implements websocket.Upgrader.CheckOrigin against
+// AllowedOrigins. Requests with no Origin header (non-browser clients such
+// as server-to-server callers or CLI tools) are let through, matching
+// gorilla/websocket's own default same-origin check; browsers always send
+// Origin on a WebSocket handshake, and that value must match the allowlist
+// exactly.
+func checkOriginAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	for _, allowed := range AllowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +174,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims.Lidnr <= 0 {
+	if !lidnrValid(claims) {
 		_ = conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(4101, "invalid lidnr"),
@@ -158,7 +186,7 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "radio" {
-		if subtle.ConstantTimeCompare([]byte(first.RadioKey), []byte(RADIOChatKey)) != 1 {
+		if !radioKeyValid(first.RadioKey) {
 			_ = conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(4103, "invalid radio key"),
@@ -379,4 +407,31 @@ func (c *Chat) verifyGEWISTokenHandshake(tokenStr string) (*GEWISClaims, error) 
 			Msg("GEWIS token expired at handshake, accepting anyway")
 	}
 	return claims, nil
+}
+
+// lidnrValid reports whether claims carries a usable GEWIS member number.
+// lidnr <= 0 (including the zero value when the claim is absent) is
+// rejected everywhere a GEWIS token is checked.
+func lidnrValid(claims *GEWISClaims) bool {
+	return claims.Lidnr > 0
+}
+
+// radioKeyValid reports whether candidate matches the configured shared
+// radio key. It uses a constant-time comparison so a wrong guess can't be
+// timed to learn how much of the key it got right.
+func radioKeyValid(candidate string) bool {
+	return subtle.ConstantTimeCompare([]byte(candidate), []byte(RADIOChatKey)) == 1
+}
+
+// VerifyRadioKey runs the same checks a role=radio WebSocket handshake
+// requires at connect time -- a valid GEWIS token, a usable lidnr, and the
+// correct shared radio key -- and reports whether all three succeeded. It
+// lets the POST /api/v1/radio-key/validate REST handler in main.go reuse
+// exactly the logic HandleWS already enforces, instead of duplicating it.
+func (c *Chat) VerifyRadioKey(tokenStr, radioKey string) bool {
+	claims, err := c.verifyGEWISTokenHandshake(tokenStr)
+	if err != nil {
+		return false
+	}
+	return lidnrValid(claims) && radioKeyValid(radioKey)
 }

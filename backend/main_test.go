@@ -122,6 +122,111 @@ func TestRadioHandler(t *testing.T) {
 	}
 }
 
+func TestRadioKeyValidateHandler(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	zeroLidnrTok := makeToken(t, GEWISSecret, 0, "Nobody", "User", time.Minute)
+
+	tests := []struct {
+		name       string
+		token      string
+		radioKey   string
+		wantStatus int
+		wantValid  bool
+	}{
+		{"valid token and key", validTok, "correct-key", http.StatusOK, true},
+		{"wrong key", validTok, "wrong-key", http.StatusUnauthorized, false},
+		{"malformed token", "definitely-not-a-jwt", "correct-key", http.StatusUnauthorized, false},
+		{"lidnr zero rejected", zeroLidnrTok, "correct-key", http.StatusUnauthorized, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(RadioKeyValidateRequest{Token: tt.token, RadioKey: tt.radioKey})
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/radio-key/validate", strings.NewReader(string(body)))
+			rec := httptest.NewRecorder()
+
+			radioKeyValidateHandler(chat, rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d (body=%s)", tt.wantStatus, rec.Code, rec.Body.String())
+			}
+			if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+				t.Fatalf("expected application/json content type, got %q", ct)
+			}
+			var got RadioKeyValidateResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if got.Valid != tt.wantValid {
+				t.Fatalf("expected valid=%v, got %v", tt.wantValid, got.Valid)
+			}
+		})
+	}
+}
+
+func TestRadioKeyValidateHandlerWrongMethod(t *testing.T) {
+	chat := NewChat()
+
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/api/v1/radio-key/validate", nil)
+		rec := httptest.NewRecorder()
+
+		radioKeyValidateHandler(chat, rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("%s: expected status 405, got %d", method, rec.Code)
+		}
+	}
+}
+
+func TestRadioKeyValidateHandlerMalformedJSON(t *testing.T) {
+	chat := NewChat()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/radio-key/validate", strings.NewReader("not json"))
+	rec := httptest.NewRecorder()
+
+	radioKeyValidateHandler(chat, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestRadioKeyValidateRouteRegistered(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	mux := newMux(chat)
+
+	tok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	body, err := json.Marshal(RadioKeyValidateRequest{Token: tok, RadioKey: "correct-key"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/radio-key/validate", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	var got RadioKeyValidateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if !got.Valid {
+		t.Fatalf("expected valid=true, got %+v", got)
+	}
+}
+
 func TestNewMuxRoutesRegistered(t *testing.T) {
 	chat := NewChat()
 	mux := newMux(chat)

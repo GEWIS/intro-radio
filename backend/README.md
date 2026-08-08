@@ -42,6 +42,7 @@ It is designed to pair with a WebSocket-capable frontend; [GEWIS/radioweb](https
 | `PORT`                    | `:8080`                                                                        | Address/port the HTTP and WebSocket server listens on.                                          |
 | `GEWIS_SECRET`            | `ChangeMe`                                                                     | HMAC secret used to verify the HS512-signed JWT presented at WebSocket handshake.                |
 | `RADIO_CHAT_KEY`          | `ChangeMe`                                                                     | Shared key that `role=radio` connections must present as `radioKey` in the handshake.           |
+| `ALLOWED_ORIGINS`         | `https://radio.gewis.nl,http://localhost:3000`                                | Comma-separated list of `Origin` header values accepted for WebSocket handshakes.               |
 | `RADIO_VIDEO_URL`         | `https://hd-auth.skylinewebcams.com/live.m3u8?a=2j5v70ov5ng6jq544ji0u6kjh3`    | Video stream URL, returned by `GET /api/v1/radio`.                                               |
 | `RADIO_AUDIO_URL`         | `bata-radio.snt.utwente.nl`                                                    | Audio/radio stream host, returned by `GET /api/v1/radio`.                                        |
 | `RADIO_AUDIO_MOUNT_POINT` | `/high`                                                                        | Mount point for the audio stream, returned by `GET /api/v1/radio`.                                |
@@ -96,10 +97,13 @@ In addition to the WebSocket chat endpoint, the server exposes a few small JSON 
 | `GET /api/v1/health` | Health check. Returns `{"status":"ok"}`.                                     |
 | `GET /api/v1/token`  | Returns the configured `RADIO_GEWIS_TOKEN` value as a JSON string.            |
 | `GET /api/v1/radio`  | Returns stream metadata: `videoUrl`, `audioUrl`, `audioMountPoint`, `startTime`. |
+| `POST /api/v1/radio-key/validate` | Validates a GEWIS JWT + candidate radio key, using the same checks as a `role=radio` WebSocket handshake. Body: `{"token": "...", "radioKey": "..."}`. Returns `200 {"valid":true}` on success or `401 {"valid":false}` on any failure (bad token, bad lidnr, or bad key -- never distinguished, to avoid giving a caller an oracle). `400` on a malformed body, `405` on anything but `POST`. |
 
 ---
 
 ## WebSocket Authentication
+
+Before any handshake is read, the upgrade request's `Origin` header (when present) is checked against `ALLOWED_ORIGINS` as defense-in-depth; requests from other origins are rejected with `403` before the connection is upgraded. Requests without an `Origin` header (non-browser clients) are not subject to this check.
 
 ### Users (`role=user`)
 
