@@ -14,15 +14,15 @@ jobs:
     needs: versioning
     if: ${{ needs.versioning.outputs.next-version != '' }}
     with:
-      projects: "['.']"
+      projects: '["."]'
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: "['gewis/radio/frontend']"
+      docker-paths: '["gewis/radio/frontend"]'
 
   release-nginx:
     uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.3
     needs: versioning
     if: ${{ needs.versioning.outputs.next-version != '' }}
     with:
-      projects: "['nginx']"
+      projects: '["nginx"]'
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: "['gewis/radio']"
+      docker-paths: '["gewis/radio"]'
