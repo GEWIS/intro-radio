@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # This job never path-filters at the trigger level, on purpose: it always runs and
+  # always reports a status, then the two build-and-lint jobs below key off its output
+  # with a job-level `if:`. If we path-filtered the trigger instead, a PR touching only
+  # backend/ would never even start the frontend job, its required check would sit as
+  # "Expected" forever, and the PR could never merge. Skipping the job via `if:` still
+  # posts a (skipped) status, which satisfies a required check.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine changed paths
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            echo "No usable base commit to diff against, treating everything as changed."
+            FRONTEND=true
+            BACKEND=true
+          else
+            CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+            echo "Changed files vs ${BASE_SHA}:"
+            echo "$CHANGED"
+            FRONTEND=false
+            BACKEND=false
+            echo "$CHANGED" | grep -q '^frontend/' && FRONTEND=true
+            echo "$CHANGED" | grep -q '^backend/' && BACKEND=true
+          fi
+          echo "frontend=${FRONTEND}" >> "$GITHUB_OUTPUT"
+          echo "backend=${BACKEND}" >> "$GITHUB_OUTPUT"
+
+  build-and-lint-frontend:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    uses: GEWIS/actions/.github/workflows/lint-and-build-yarn.yml@v1
+    with:
+      working-directory: frontend
+      node-version: "22.x"
+      lint: true
+      format: true
+      build: true
+      test: true
+
+  build-and-lint-backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    uses: GEWIS/actions/.github/workflows/lint-and-build-go.yml@v1
+    with:
+      working-directory: backend
+      go-version: "^1.24.0"
+      lint: true
+      format: true
+      build: true
+      test: true
+
+  # Not path-filtered: it always builds all three images on every push/PR. That costs a
+  # few extra minutes on backend-only or frontend-only changes, but it sidesteps the same
+  # skipped-required-check trap entirely for this job (see the comment on `changes` above)
+  # without needing a second matching status-check name for a job that sometimes runs and
+  # sometimes doesn't.
+  dockerize:
+    uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
+    with:
+      projects: '["frontend", "frontend/nginx", "backend"]'
+      dockerfiles: '["frontend/Dockerfile", "frontend/nginx/Dockerfile", "backend/Dockerfile"]'
