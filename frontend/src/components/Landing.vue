@@ -11,6 +11,7 @@
       <v-row>
         <v-col cols="12">
           <AudioStream v-if="isStarted" :base-url="radio.audioUrl" :mount-point="radio.audioMountPoint" />
+
           <v-card v-else v-ripple class="py-4" color="primary" rounded="lg">
             <template #title>
               <div class="w-100 text-center">
@@ -31,6 +32,7 @@
 
         <v-col v-if="isStarted" cols="12">
           <RadioChat v-if="chatActive" />
+
           <v-card
             v-else
             class="py-4"
@@ -84,12 +86,14 @@
               <div v-if="link.image" class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
                 <v-img :alt="link.imageAlt" class="object-cover" height="32" :src="link.image" width="32" />
               </div>
+
               <v-icon v-else :icon="link.icon" />
             </template>
           </v-card>
         </v-col>
       </v-row>
     </div>
+
     <RequestSong v-if="isStarted" />
   </v-container>
 </template>

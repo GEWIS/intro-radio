@@ -6,14 +6,12 @@
 
 import { setupLayouts } from 'virtual:generated-layouts';
 // Composables
-// eslint-disable-next-line import/no-duplicates
-import { createRouter, createWebHistory } from 'vue-router/auto';
-// eslint-disable-next-line import/no-duplicates
+import { createRouter, createWebHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: setupLayouts(routes),
+  routes: setupLayouts([...routes]),
 });
 
 // Workaround for https://github.com/vitejs/vite/issues/11804

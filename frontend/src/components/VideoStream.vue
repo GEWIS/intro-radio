@@ -12,13 +12,16 @@
       >
         Start Video Stream
       </v-btn>
+
       <div class="text-caption text-secondary font-weight-medium">Video streaming may use significant data</div>
     </div>
+
     <div v-else-if="hasError" class="d-flex flex-column align-center py-8 text-center">
       <v-icon class="mb-2" color="error" icon="mdi-alert-circle-outline" size="40" />
       <div class="text-body-2 mb-3">Unable to load the video stream.</div>
       <v-btn color="primary" prepend-icon="mdi-refresh" variant="tonal" @click="retry">Try again</v-btn>
     </div>
+
     <video
       v-else
       ref="video"

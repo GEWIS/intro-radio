@@ -6,6 +6,7 @@
       style="display: none"
       @error="handleStreamError"
     />
+
     <v-card
       v-ripple
       class="py-4"
@@ -23,15 +24,18 @@
           {{ isPlaying ? 'Stop listening' : showLive ? 'Now live' : 'Click to start listening!' }}
         </h2>
       </template>
+
       <template #subtitle>
         <div v-if="hasError" class="mt-2 text-error">
           {{ errorMessage }}
         </div>
+
         <div v-else-if="isPlaying" class="mt-2">
           <span v-if="!showListeners">
             Currently playing:
             <strong>{{ currentlyPlaying || 'Loading...' }}</strong>
           </span>
+
           <span v-else>
             There currently {{ listeners === 1 ? 'is' : 'are' }}
             <strong>{{ listeners !== null ? listeners : 'Loading...' }}</strong>
@@ -54,7 +58,7 @@ const props = defineProps<{
 // The backend's default RADIO_AUDIO_URL has no scheme (e.g. "bata-radio.snt.utwente.nl"),
 // which makes the <audio> src resolve as a same-origin relative path instead of an
 // absolute stream URL. Default to https:// when no scheme is present.
-const SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
+const SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
 const normalizedBaseUrl = computed(() => {
   const trimmed = props.baseUrl.replace(/\/$/, '');
   return SCHEME_PATTERN.test(trimmed) ? trimmed : `https://${trimmed}`;

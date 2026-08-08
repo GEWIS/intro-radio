@@ -8,7 +8,6 @@ import VueRouter from 'unplugin-vue-router/vite';
 // Utilities
 import { defineConfig } from 'vite';
 import Layouts from 'vite-plugin-vue-layouts-next';
-
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify';
 
 const PROXY_URL = 'http://localhost:8080';
