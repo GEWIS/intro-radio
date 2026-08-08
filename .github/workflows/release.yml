@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  versioning:
+    uses: GEWIS/actions/.github/workflows/versioning.yml@v1
+    with:
+      node-version: "22.x"
+
+  release-frontend:
+    needs: versioning
+    if: ${{ needs.versioning.outputs.next-version != '' }}
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.5
+    with:
+      projects: '["frontend"]'
+      dockerfiles: '["frontend/Dockerfile"]'
+      version: ${{ needs.versioning.outputs.next-version }}
+      docker-paths: '["gewis/radio/frontend"]'
+
+  release-nginx:
+    needs: versioning
+    if: ${{ needs.versioning.outputs.next-version != '' }}
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.5
+    with:
+      projects: '["frontend/nginx"]'
+      dockerfiles: '["frontend/nginx/Dockerfile"]'
+      version: ${{ needs.versioning.outputs.next-version }}
+      docker-paths: '["gewis/radio"]'
+
+  release-backend:
+    needs: versioning
+    if: ${{ needs.versioning.outputs.next-version != '' }}
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.5
+    with:
+      projects: '["backend"]'
+      dockerfiles: '["backend/Dockerfile"]'
+      version: ${{ needs.versioning.outputs.next-version }}
+      docker-paths: '["gewis/radio/backend"]'
