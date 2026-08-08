@@ -1,7 +1,6 @@
 # Intro Radio Frontend
 
-[![Lint and build](https://github.com/GEWIS/radioweb/actions/workflows/lint-and-build.yml/badge.svg)](https://github.com/GEWIS/radioweb/actions/workflows/lint-and-build.yml)
-[![Docker Build](https://github.com/GEWIS/radioweb/actions/workflows/docker-build.yml/badge.svg)](https://github.com/GEWIS/radioweb/actions/workflows/docker-build.yml)
+[![CI](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml/badge.svg)](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 This is the web frontend for Intro Radio, the GEWIS live stream during the introduction week. It is a Vue 3 + Vuetify single-page app that plays the Icecast/HLS stream, and, for admins, provides a backoffice chat to talk with listeners.
@@ -49,7 +48,7 @@ yarn format      # format with Prettier
 
 ## Docker
 
-Two images are built from this repository, matching the `Docker Build` workflow:
+Two images are built from this repository, matching the `dockerize` job in the root [CI workflow](https://github.com/GEWIS/intro-radio/blob/main/.github/workflows/ci.yml):
 
 - **App** -- built from the root `Dockerfile`. Builds the Vue app with Yarn and serves the static `dist/` output through nginx.
 

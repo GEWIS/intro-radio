@@ -1,0 +1,15 @@
+{
+  "name": "intro-radio",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GEWIS Radio monorepo (frontend + backend). Root package.json exists only to make @gewis/release-config resolvable for semantic-release.",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GEWIS/intro-radio.git"
+  },
+  "devDependencies": {
+    "@gewis/release-config": "^2.4.0"
+  }
+}
