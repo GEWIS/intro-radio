@@ -87,3 +87,34 @@ jobs:
     with:
       projects: '["frontend", "frontend/nginx", "backend"]'
       dockerfiles: '["frontend/Dockerfile", "frontend/nginx/Dockerfile", "backend/Dockerfile"]'
+
+  # A reusable-workflow-call job posts its status under two different check names
+  # depending on what happens: "build-and-lint-frontend / yarn-steps" if it actually runs,
+  # but just "build-and-lint-frontend" (no suffix) if skipped via `if:`. Branch protection
+  # matches on the exact string, so neither name alone is safe to require directly -- one
+  # of the two would always be missing depending on which paths changed. This job runs
+  # unconditionally (`if: always()`, no `uses:`), so it always posts under one stable name,
+  # and treats "skipped" (path didn't apply) the same as "success" while still failing on
+  # a genuine failure. Require *this* job, not the frontend/backend jobs directly.
+  required-checks:
+    name: Required checks
+    needs:
+      - changes
+      - build-and-lint-frontend
+      - build-and-lint-backend
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs succeeded or were correctly skipped
+        run: |
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes job did not succeed (result: ${{ needs.changes.result }})"
+            exit 1
+          fi
+          for result in "${{ needs.build-and-lint-frontend.result }}" "${{ needs.build-and-lint-backend.result }}"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "A required lint job did not succeed (result: $result)"
+              exit 1
+            fi
+          done
+          echo "All required jobs succeeded or were correctly skipped."
