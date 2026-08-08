@@ -16,14 +16,18 @@
       <v-spacer />
       <v-icon color="primary">{{ expanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
     </div>
+
     <v-expand-transition>
       <div v-if="expanded" class="mt-4">
         <div class="mb-4">Apart from playing the best music, we also have some quality segments for you to enjoy:</div>
+
         <template v-for="([date, ev], groupIdx) in groupedEvents" :key="date">
           <div v-if="groupIdx > 0" class="my-4">
             <v-divider />
           </div>
+
           <div class="mb-2 text-caption font-weight-bold">{{ getWeekday(date) }}</div>
+
           <div
             v-for="event in ev"
             :key="event.title"
@@ -35,11 +39,14 @@
             }"
           >
             <v-icon class="mr-3" :color="event.iconColor">{{ event.icon }}</v-icon>
+
             <div>
               <div class="font-weight-bold" style="font-size: 1.1rem">
                 {{ event.title }}
               </div>
+
               <div class="text-body-2">{{ event.subtitle }}</div>
+
               <div class="text-caption text-secondary">
                 <span v-if="event.time">{{ event.time }}</span>
               </div>
@@ -100,7 +107,7 @@ const groupedEvents = computed(() => {
     groups[event.date].push(event);
   }
   // Return as sorted array of [date, events[]]
-  return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  return Object.entries(groups).toSorted(([a], [b]) => a.localeCompare(b));
 });
 
 // Show only the weekday name

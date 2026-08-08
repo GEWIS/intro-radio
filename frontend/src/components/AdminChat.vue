@@ -6,6 +6,7 @@
         <v-card class="h-100 p-2" flat>
           <v-card-title class="p-2">Users</v-card-title>
           <v-divider />
+
           <v-list class="overflow-y-auto p-2" style="height: calc(70vh - 80px)">
             <v-list-item
               v-for="u in users"
@@ -32,8 +33,10 @@
               <span class="font-weight-medium">Chat with:</span>
               <span class="ml-2">{{ activeUserTitle }}</span>
             </div>
+
             <v-btn :loading="connecting" size="small" variant="text" @click="connect">Reconnect</v-btn>
           </v-card-title>
+
           <v-divider />
 
           <div
@@ -58,6 +61,7 @@
                 </div>
               </div>
             </template>
+
             <template v-else>
               <div class="d-flex flex-column align-center justify-center text-center" style="height: 50vh">
                 <div class="text-h6 mb-1">Whoops, something went wrong!</div>
@@ -76,6 +80,7 @@
               placeholder="Write a message"
               @keydown.enter="send"
             />
+
             <v-btn class="flex-shrink-0" color="primary" :disabled="isClosed || !activeUser" height="40" @click="send">
               Send
             </v-btn>
@@ -114,7 +119,7 @@ const chats = ref<Record<string, ChatMessage[]>>({});
 const usersMap = ref<Record<string, ChatUser>>({});
 
 const users = computed<ChatUser[]>(() =>
-  Object.values(usersMap.value).sort((a, b) => {
+  Object.values(usersMap.value).toSorted((a, b) => {
     if (b.lastActivity !== a.lastActivity) return b.lastActivity - a.lastActivity;
     const an = `${a.givenName} ${a.familyName}`.trim();
     const bn = `${b.givenName} ${b.familyName}`.trim();
@@ -166,7 +171,13 @@ function selectUser(id: string) {
   scrollToBottom();
 }
 
-const { isClosed, connecting, connect, disconnect, send: sendRaw } = useChatSocket<Outgoing>({
+const {
+  isClosed,
+  connecting,
+  connect,
+  disconnect,
+  send: sendRaw,
+} = useChatSocket<Outgoing>({
   path: '/ws?role=radio',
   getToken: () => getToken(),
   buildHandshake: (token) => ({ token, radioKey: props.radioKey }),

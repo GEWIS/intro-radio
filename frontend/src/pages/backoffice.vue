@@ -27,6 +27,7 @@
               hide-details="auto"
               label="Admin key"
             />
+
             <div class="w-full d-flex justify-end">
               <v-btn color="primary" :loading="validating" type="submit">Continue</v-btn>
             </div>

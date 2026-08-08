@@ -12,11 +12,13 @@
     >
       <div class="d-flex align-center">
         <v-icon class="mr-3" icon="mdi-music-note-plus" />
+
         <div>
           <div class="text-subtitle-1 font-weight-medium">Choose your song</div>
           <div class="text-body-2 text-medium-emphasis">Want to listen to your favourite song?</div>
         </div>
       </div>
+
       <v-icon :class="expanded ? 'rotate-180' : ''" icon="mdi-chevron-down" />
     </div>
 
