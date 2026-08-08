@@ -1,6 +1,6 @@
 # RadioGaGa
 
-[![CI](https://github.com/GEWIS/radiogaga/actions/workflows/ci.yaml/badge.svg)](https://github.com/GEWIS/radiogaga/actions/workflows/ci.yaml)
+[![CI](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml/badge.svg)](https://github.com/GEWIS/intro-radio/actions/workflows/ci.yml)
 
 RadioGaGa is a Golang-based backend for a simple Icecast/HLS stream frontend, with basic **one-on-one chat** functionality between listeners and radio staff.
 
@@ -83,7 +83,7 @@ docker run -p 8080:8080 \
   radiogaga
 ```
 
-CI builds and pushes this same image via the shared `docker-build.yml` / `docker-release-ghcr.yml` GEWIS workflows on every push and release to `master`.
+CI builds this image via the `dockerize` job in the root [CI workflow](https://github.com/GEWIS/intro-radio/blob/main/.github/workflows/ci.yml) on every push and PR, and pushes it via the shared `docker-release-ghcr.yml` GEWIS workflow on every release to `main`.
 
 ---
 
