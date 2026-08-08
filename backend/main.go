@@ -21,6 +21,15 @@ type RadioInfo struct {
 	StartTime       string `json:"startTime"`
 }
 
+type RadioKeyValidateRequest struct {
+	Token    string `json:"token"`
+	RadioKey string `json:"radioKey"`
+}
+
+type RadioKeyValidateResponse struct {
+	Valid bool `json:"valid"`
+}
+
 var (
 	port            = String("PORT", ":8080")
 	videoURL        = String("RADIO_VIDEO_URL", "https://hd-auth.skylinewebcams.com/live.m3u8?a=2j5v70ov5ng6jq544ji0u6kjh3")
@@ -67,6 +76,40 @@ func radioHandler(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// radioKeyValidateHandler backs POST /api/v1/radio-key/validate. It gives
+// the frontend's backoffice a real yes/no answer for a candidate radio key
+// instead of the timing heuristic it previously relied on (open a WS,
+// guess valid if the server hasn't closed it after 200ms). chat is threaded
+// through explicitly (see newMux) rather than read from a package-level
+// global, matching how HandleWS already carries its own Chat receiver.
+//
+// Success and failure both report Content-Type: application/json so
+// callers can always decode a RadioKeyValidateResponse; the 401 case
+// intentionally collapses "bad token", "bad lidnr", and "bad key" into the
+// same {"valid":false} response so a caller can't use this endpoint as an
+// oracle to work out which part of a guess was wrong.
+func radioKeyValidateHandler(chat *Chat, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RadioKeyValidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: true})
+}
+
 // newMux wires up all HTTP and WebSocket routes on a fresh ServeMux, rather
 // than registering on http.DefaultServeMux, so it can be constructed
 // independently in tests.
@@ -76,6 +119,9 @@ func newMux(chat *Chat) *http.ServeMux {
 	mux.HandleFunc("/api/v1/health", healthHandler)
 	mux.HandleFunc("/api/v1/token", tokenHandler)
 	mux.HandleFunc("/api/v1/radio", radioHandler)
+	mux.HandleFunc("/api/v1/radio-key/validate", func(w http.ResponseWriter, r *http.Request) {
+		radioKeyValidateHandler(chat, w, r)
+	})
 	return mux
 }
 

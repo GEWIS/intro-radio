@@ -97,6 +97,7 @@ In addition to the WebSocket chat endpoint, the server exposes a few small JSON 
 | `GET /api/v1/health` | Health check. Returns `{"status":"ok"}`.                                     |
 | `GET /api/v1/token`  | Returns the configured `RADIO_GEWIS_TOKEN` value as a JSON string.            |
 | `GET /api/v1/radio`  | Returns stream metadata: `videoUrl`, `audioUrl`, `audioMountPoint`, `startTime`. |
+| `POST /api/v1/radio-key/validate` | Validates a GEWIS JWT + candidate radio key, using the same checks as a `role=radio` WebSocket handshake. Body: `{"token": "...", "radioKey": "..."}`. Returns `200 {"valid":true}` on success or `401 {"valid":false}` on any failure (bad token, bad lidnr, or bad key -- never distinguished, to avoid giving a caller an oracle). `400` on a malformed body, `405` on anything but `POST`. |
 
 ---
 
