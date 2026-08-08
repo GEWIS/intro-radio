@@ -25,8 +25,7 @@ export function stripTokenParamFromUrl() {
   const params = new URLSearchParams(window.location.search);
   params.delete('token');
   const query = params.toString();
-  const newUrl =
-    window.location.origin + window.location.pathname + (query ? `?${query}` : '') + window.location.hash;
+  const newUrl = window.location.origin + window.location.pathname + (query ? `?${query}` : '') + window.location.hash;
   window.history.replaceState({}, document.title, newUrl);
 }
 

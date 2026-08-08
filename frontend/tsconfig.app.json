@@ -6,6 +6,10 @@
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
 
+    // ES2023 for Array#toSorted() etc. -- safe given .browserslistrc targets
+    // evergreen browsers only (last 2 versions, not dead, not ie 11).
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
