@@ -193,6 +193,52 @@ func TestReconnectKicksOldWith4100(t *testing.T) {
 	}
 }
 
+func TestCheckOriginAllowlist(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	u, _ := url.Parse(wsBase)
+	q := u.Query()
+	q.Set("role", "user")
+	u.RawQuery = q.Encode()
+
+	tests := []struct {
+		name      string
+		origin    string
+		wantAllow bool
+	}{
+		{"evil origin rejected", "https://evil.example.com", false},
+		{"production origin accepted", "https://radio.gewis.nl", true},
+		{"local dev origin accepted", "http://localhost:3000", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			header := http.Header{"Origin": []string{tt.origin}}
+			c, resp, err := websocket.DefaultDialer.Dial(u.String(), header)
+
+			if tt.wantAllow {
+				if err != nil {
+					t.Fatalf("expected upgrade to succeed for origin %q, got err=%v", tt.origin, err)
+				}
+				defer c.Close()
+				return
+			}
+
+			if err == nil {
+				c.Close()
+				t.Fatalf("expected upgrade to fail for origin %q, but it succeeded", tt.origin)
+			}
+			if resp == nil || resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("expected 403 for origin %q, got resp=%+v err=%v", tt.origin, resp, err)
+			}
+		})
+	}
+}
+
 func TestInvalidRoleRejected(t *testing.T) {
 	GEWISSecret = "testsecret"
 	chat := NewChat()

@@ -72,6 +72,15 @@ type GEWISClaims struct {
 var (
 	GEWISSecret  = String("GEWIS_SECRET", "ChangeMe")
 	RADIOChatKey = String("RADIO_CHAT_KEY", "ChangeMe")
+
+	// AllowedOrigins is the set of Origin header values NewChat's upgrader
+	// accepts for WebSocket handshakes. It defaults to the production
+	// frontend and the local Vite dev server; override with a
+	// comma-separated ALLOWED_ORIGINS env var for other environments.
+	AllowedOrigins = StringSlice("ALLOWED_ORIGINS", []string{
+		"https://radio.gewis.nl",
+		"http://localhost:3000",
+	})
 )
 
 type Chat struct {
@@ -91,12 +100,31 @@ type Chat struct {
 func NewChat() *Chat {
 	return &Chat{
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: checkOriginAllowed,
 		},
 		handshakeTimeout: defaultHandshakeTimeout,
 		users:            make(map[string]*Client),
 		radios:           make(map[*Client]struct{}),
 	}
+}
+
+// checkOriginAllowed implements websocket.Upgrader.CheckOrigin against
+// AllowedOrigins. Requests with no Origin header (non-browser clients such
+// as server-to-server callers or CLI tools) are let through, matching
+// gorilla/websocket's own default same-origin check; browsers always send
+// Origin on a WebSocket handshake, and that value must match the allowlist
+// exactly.
+func checkOriginAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	for _, allowed := range AllowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
