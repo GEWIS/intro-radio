@@ -19,7 +19,7 @@ jobs:
       projects: '["frontend"]'
       dockerfiles: '["frontend/Dockerfile"]'
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: '["gewis/radio/frontend"]'
+      docker-paths: '["gewis/intro-radio/frontend"]'
 
   release-nginx:
     needs: versioning
@@ -29,7 +29,7 @@ jobs:
       projects: '["frontend/nginx"]'
       dockerfiles: '["frontend/nginx/Dockerfile"]'
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: '["gewis/radio"]'
+      docker-paths: '["gewis/intro-radio/nginx"]'
 
   release-backend:
     needs: versioning
@@ -39,4 +39,4 @@ jobs:
       projects: '["backend"]'
       dockerfiles: '["backend/Dockerfile"]'
       version: ${{ needs.versioning.outputs.next-version }}
-      docker-paths: '["gewis/radio/backend"]'
+      docker-paths: '["gewis/intro-radio/backend"]'
