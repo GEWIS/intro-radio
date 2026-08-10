@@ -39,8 +39,14 @@ func TestAgendaLoadSeedsDefaultWhenFileMissing(t *testing.T) {
 	if len(got) != len(want) {
 		t.Fatalf("expected %d seeded events, got %d", len(want), len(got))
 	}
-	if got[0].Title != want[0].Title {
-		t.Fatalf("expected first event %q, got %q", want[0].Title, got[0].Title)
+	// defaultAgendaEvents() is already in chronological order, so seeding it
+	// (which round-trips through Replace(), and now sortAgendaEvents) must
+	// be a no-op on ordering -- check every title, not just the first, so a
+	// comparator bug that only shows up further down the list gets caught.
+	for i := range want {
+		if got[i].Title != want[i].Title {
+			t.Fatalf("expected seeding to preserve defaultAgendaEvents' order, event %d: expected %q, got %q (full order: %v)", i, want[i].Title, got[i].Title, titlesOf(got))
+		}
 	}
 
 	if _, err := os.Stat(path); err != nil {
@@ -135,6 +141,33 @@ func TestAgendaLoadRejectsSemanticallyInvalidOnDiskFile(t *testing.T) {
 	// mutated it on the way to returning an error.
 	if got := a.List(); len(got) != 0 {
 		t.Fatalf("expected a.events to remain untouched after a rejected Load, got %+v", got)
+	}
+}
+
+func TestAgendaLoadSortsUnsortedOnDiskFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agenda.json")
+	// Valid and already-passes-validation, but hand-entered out of
+	// chronological order.
+	unsorted := []AgendaEvent{
+		{Title: "Later", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-02", Time: "9:00 - 10:00"},
+		{Title: "Earlier", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"},
+	}
+	data, err := json.Marshal(unsorted)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	a := NewAgenda(path)
+	if err := a.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	got := a.List()
+	if len(got) != 2 || got[0].Title != "Earlier" || got[1].Title != "Later" {
+		t.Fatalf("expected Load to normalize an unsorted on-disk file into chronological order, got %v", titlesOf(got))
 	}
 }
 
@@ -293,6 +326,87 @@ func TestAgendaReplacePersistsToDisk(t *testing.T) {
 	}
 	if len(onDisk) != 1 || onDisk[0].Title != "Persisted" {
 		t.Fatalf("expected the new event on disk, got %+v", onDisk)
+	}
+}
+
+// titlesOf extracts Title from each event, for compact test failure
+// messages that show the actual order without dumping every field.
+func titlesOf(events []AgendaEvent) []string {
+	out := make([]string, len(events))
+	for i, e := range events {
+		out[i] = e.Title
+	}
+	return out
+}
+
+func TestAgendaReplaceSortsChronologically(t *testing.T) {
+	a := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+
+	event := func(title, date, timeRange string) AgendaEvent {
+		return AgendaEvent{Title: title, Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: date, Time: timeRange}
+	}
+
+	// Deliberately out of order: a later date first, then two events on the
+	// same, earlier date with their start times swapped.
+	unsorted := []AgendaEvent{
+		event("Second Day", "2026-01-02", "9:00 - 10:00"),
+		event("First Day, Later Slot", "2026-01-01", "18:00 - 19:00"),
+		event("First Day, Earlier Slot", "2026-01-01", "9:00 - 10:00"),
+	}
+	if err := a.Replace(unsorted); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+
+	wantOrder := []string{"First Day, Earlier Slot", "First Day, Later Slot", "Second Day"}
+
+	got := a.List()
+	if len(got) != len(wantOrder) {
+		t.Fatalf("expected %d events, got %d: %v", len(wantOrder), len(got), titlesOf(got))
+	}
+	for i, title := range wantOrder {
+		if got[i].Title != title {
+			t.Fatalf("in-memory event %d: expected %q, got order %v", i, title, titlesOf(got))
+		}
+	}
+
+	// The PUT response is built from a.List(), which we already checked
+	// above, but assert against the on-disk file directly too, so a future
+	// change that sorts one copy and not the other gets caught here.
+	data, err := os.ReadFile(a.path)
+	if err != nil {
+		t.Fatalf("reading persisted file: %v", err)
+	}
+	var onDisk []AgendaEvent
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		t.Fatalf("unmarshal persisted file: %v", err)
+	}
+	for i, title := range wantOrder {
+		if onDisk[i].Title != title {
+			t.Fatalf("on-disk event %d: expected %q, got order %v", i, title, titlesOf(onDisk))
+		}
+	}
+}
+
+func TestAgendaReplaceSortIsStableOnTies(t *testing.T) {
+	a := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+
+	event := func(title string) AgendaEvent {
+		return AgendaEvent{Title: title, Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
+	}
+
+	// All three share the same date and start time, so a stable sort must
+	// leave them in their original relative order instead of shuffling them.
+	tied := []AgendaEvent{event("A"), event("B"), event("C")}
+	if err := a.Replace(tied); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+
+	got := a.List()
+	wantOrder := []string{"A", "B", "C"}
+	for i, title := range wantOrder {
+		if got[i].Title != title {
+			t.Fatalf("expected ties to preserve original order, got %v", titlesOf(got))
+		}
 	}
 }
 

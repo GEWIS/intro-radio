@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +111,9 @@ func (a *Agenda) Load() error {
 			return fmt.Errorf("event %d (%q): %w", i, e.Title, err)
 		}
 	}
+	// Normalize a hand-edited or pre-existing on-disk file into chronological
+	// order too, not just events that arrive through Replace().
+	sortAgendaEvents(events)
 
 	a.mutex.Lock()
 	a.events = events
@@ -145,6 +151,11 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 			return &agendaValidationError{msg: fmt.Sprintf("event %d (%q): %v", i, e.Title, err)}
 		}
 	}
+	// The backend is the single source of truth for display order: sort
+	// before persisting so the file on disk, the in-memory state, and the
+	// list returned to the PUT caller all agree, regardless of what order
+	// the request listed events in.
+	sortAgendaEvents(events)
 
 	data, err := json.MarshalIndent(events, "", "  ")
 	if err != nil {
@@ -199,6 +210,38 @@ func validateAgendaEvent(e AgendaEvent) error {
 		return fmt.Errorf("colorDark %q must be a 6-digit hex code", e.ColorDark)
 	}
 	return nil
+}
+
+// sortAgendaEvents sorts events in place chronologically by Date and then
+// by the start of Time, so the backend -- not whatever order a PUT request
+// happened to list events in, or whatever order they were manually arranged
+// in on disk -- is the single source of truth for display order.
+// sort.SliceStable (not sort.Slice) keeps events that tie on both keys in
+// their original relative order rather than shuffling them unpredictably
+// between saves.
+//
+// Both call sites only ever run this on already-validated events, so
+// startMinutes' use of strconv.Atoi below can ignore its error return: the
+// "H:MM - H:MM" shape is guaranteed by validateAgendaEvent by that point.
+func sortAgendaEvents(events []AgendaEvent) {
+	sort.SliceStable(events, func(i, j int) bool {
+		if events[i].Date != events[j].Date {
+			// Plain string compare is correct here because Date is always
+			// "YYYY-MM-DD".
+			return events[i].Date < events[j].Date
+		}
+		return startMinutes(events[i].Time) < startMinutes(events[j].Time)
+	})
+}
+
+// startMinutes returns the minutes-since-midnight of the start of a
+// validated "H:MM - H:MM" time range, e.g. "9:30 - 10:00" -> 570.
+func startMinutes(timeRange string) int {
+	start, _, _ := strings.Cut(timeRange, " - ")
+	hour, minute, _ := strings.Cut(start, ":")
+	h, _ := strconv.Atoi(hour)
+	m, _ := strconv.Atoi(minute)
+	return h*60 + m
 }
 
 // defaultAgendaEvents seeds a fresh agenda.json on first boot with what
