@@ -109,6 +109,35 @@ func TestAgendaLoadCorruptFileStaysFatal(t *testing.T) {
 	}
 }
 
+func TestAgendaLoadRejectsSemanticallyInvalidOnDiskFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agenda.json")
+	// Valid JSON, but the color fails validateAgendaEvent's hex-code check.
+	// A hand-edit or a bug elsewhere could produce exactly this: well-formed
+	// JSON that Unmarshal happily accepts but that isn't a legal event.
+	invalid := []AgendaEvent{
+		{Title: "Bad Color", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "not-a-hex-code", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"},
+	}
+	data, err := json.Marshal(invalid)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	a := NewAgenda(path)
+	if err := a.Load(); err == nil {
+		t.Fatalf("expected Load to fail on a semantically invalid agenda file")
+	}
+
+	// a is a fresh Agenda that was never successfully loaded, so its events
+	// must still be the zero-value empty slice -- Load must not have
+	// mutated it on the way to returning an error.
+	if got := a.List(); len(got) != 0 {
+		t.Fatalf("expected a.events to remain untouched after a rejected Load, got %+v", got)
+	}
+}
+
 func validAgendaEventFixture() AgendaEvent {
 	return AgendaEvent{Title: "T", Subtitle: "S", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
 }

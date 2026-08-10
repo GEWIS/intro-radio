@@ -73,10 +73,10 @@ func NewAgenda(path string) *Agenda {
 // is downgraded to a warning: the in-memory defaults are still perfectly
 // serveable, and crash-looping a previously healthy service over a
 // persistence hiccup is strictly worse than running read-only until
-// someone fixes the volume. A file that *is* present but unreadable or
-// corrupt stays fatal -- there we'd be silently replacing real, curated
-// schedule data with the built-in defaults, and the next save would
-// overwrite the file that was about to be recovered.
+// someone fixes the volume. A file that *is* present but unreadable, fails
+// to parse, or fails validation stays fatal -- there we'd be silently
+// replacing real, curated schedule data with the built-in defaults, and
+// the next save would overwrite the file that was about to be recovered.
 func (a *Agenda) Load() error {
 	data, err := os.ReadFile(a.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -96,6 +96,17 @@ func (a *Agenda) Load() error {
 	var events []AgendaEvent
 	if err := json.Unmarshal(data, &events); err != nil {
 		return fmt.Errorf("parsing agenda file: %w", err)
+	}
+	// Unlike Replace(), a validation failure here isn't the caller's fault
+	// to fix through the API -- it's a bad on-disk file, and main() already
+	// treats any Load() error as fatal. So this is a plain wrapped error,
+	// not an *agendaValidationError; that type exists only so the HTTP
+	// handler's errors.As can tell rejected input apart from a persistence
+	// failure, and this code path is never reached from the handler.
+	for i, e := range events {
+		if err := validateAgendaEvent(e); err != nil {
+			return fmt.Errorf("event %d (%q): %w", i, e.Title, err)
+		}
 	}
 
 	a.mutex.Lock()
