@@ -99,6 +99,8 @@ In addition to the WebSocket chat endpoint, the server exposes a few small JSON 
 | `GET /api/v1/token`  | Returns the configured `RADIO_GEWIS_TOKEN` value as a JSON string.            |
 | `GET /api/v1/radio`  | Returns stream metadata: `videoUrl`, `audioUrl`, `audioMountPoint`, `startTime`. |
 | `POST /api/v1/radio-key/validate` | Validates a GEWIS JWT + candidate radio key, using the same checks as a `role=radio` WebSocket handshake. Body: `{"token": "...", "radioKey": "..."}`. Returns `200 {"valid":true}` on success or `401 {"valid":false}` on any failure (bad token, bad lidnr, or bad key -- never distinguished, to avoid giving a caller an oracle). `400` on a malformed body, `405` on anything but `POST`. |
+| `GET /api/v1/agenda` | Public, no authentication required. Returns the current agenda as a JSON array of events, each shaped `{"title", "subtitle", "icon", "iconColor", "color", "colorDark", "date", "time"}` (see `AgendaEvent` in `agenda.go`). |
+| `PUT /api/v1/agenda` | Replaces the whole agenda. Body: `{"token": "...", "radioKey": "...", "events": [...]}`. Auth reuses `chat.VerifyRadioKey`, the same check as `POST /api/v1/radio-key/validate`. Returns `401 {"valid":false}` on a bad token/key, `400` on a malformed body or if any event fails validation (each event needs non-empty `title`/`icon`/`iconColor`, `date` as `YYYY-MM-DD`, `time` like `"9:00 - 10:00"`, and `color`/`colorDark` as 6-digit hex codes), and `200` with the saved list on success. `405` on anything but `GET`/`PUT`. |
 
 ---
 
