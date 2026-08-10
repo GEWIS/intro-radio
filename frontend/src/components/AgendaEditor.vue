@@ -68,7 +68,19 @@ const { events } = editor;
 const expandedEvent = ref<AgendaEvent | null>(null);
 const expandedIndex = computed(() => (expandedEvent.value ? events.value.indexOf(expandedEvent.value) : -1));
 
-defineExpose({ editor });
+// `expandedEvent` (read) and `setExpandedEvent` (write) are exposed
+// alongside `editor` so a caller's save() can carry the open row across a
+// save: useAgendaEditor's markSaved() replaces `events` with freshly cloned
+// objects (see its own comment for why), which would otherwise silently
+// collapse whatever row is open -- not just the one being edited, but any
+// row left expanded while the caller batches up several edits before
+// saving. A setter is exposed rather than the bare ref because Vue's
+// defineExpose proxy unwraps top-level refs on read (the same auto-unwrap
+// template refs get), so a caller reading `editorRef.value.expandedEvent`
+// sees the current value directly -- but assigning `editorRef.value
+// .expandedEvent = x` from outside would set that unwrapped property, not
+// the ref, and never reach this component's actual state.
+defineExpose({ editor, expandedEvent, setExpandedEvent: (event: AgendaEvent | null) => (expandedEvent.value = event) });
 
 function addEvent() {
   const index = editor.add();
