@@ -210,6 +210,29 @@ func TestAgendaReplaceValidation(t *testing.T) {
 	}
 }
 
+// TestAgendaReplaceCleansUpStrayTmpFileOnRenameFailure forces os.Rename to
+// fail *after* os.WriteFile(tmp, ...) has already succeeded, by making the
+// rename's target an existing directory: you cannot rename a regular file
+// onto an existing directory, but tmp (a different filename in the same,
+// writable, directory) still writes out fine first. Without cleanup, that
+// leaves the .tmp file behind forever.
+func TestAgendaReplaceCleansUpStrayTmpFileOnRenameFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agenda.json")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+
+	a := NewAgenda(path)
+	if err := a.Replace([]AgendaEvent{validAgendaEventFixture()}); err == nil {
+		t.Fatalf("expected Replace to fail when the rename target is a directory")
+	}
+
+	if _, err := os.Stat(path + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected the stray .tmp file to be cleaned up, stat err=%v", err)
+	}
+}
+
 func TestAgendaReplaceWriteFailureIsNotAValidationError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "agenda.json")

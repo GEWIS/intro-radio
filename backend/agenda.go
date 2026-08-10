@@ -162,6 +162,13 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 		return fmt.Errorf("writing agenda file: %w", err)
 	}
 	if err := os.Rename(tmp, a.path); err != nil {
+		// Best-effort cleanup so a rename failure doesn't leave the .tmp
+		// file behind forever. If the cleanup itself fails too, that must
+		// not mask the rename error we're about to return -- just log it.
+		if rmErr := os.Remove(tmp); rmErr != nil {
+			log.Warn().Err(rmErr).Str("path", tmp).
+				Msg("could not clean up the stray temp file left behind by a failed rename")
+		}
 		return fmt.Errorf("saving agenda file: %w", err)
 	}
 
