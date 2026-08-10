@@ -29,8 +29,8 @@
           <div class="mb-2 text-caption font-weight-bold">{{ getWeekday(date) }}</div>
 
           <div
-            v-for="event in ev"
-            :key="event.title"
+            v-for="(event, idx) in ev"
+            :key="`${date}-${idx}`"
             class="d-flex align-center mb-3 pa-3"
             :class="{ 'current-event': isCurrentEvent(event) }"
             :style="{
@@ -75,11 +75,24 @@ function toggle() {
 
 const { agenda: events } = storeToRefs(useAppStore());
 
-// Helper to parse "YYYY-MM-DD HH:mm" to Date
+function timeStartMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Helper to parse "YYYY-MM-DD HH:mm" to Date. An event's time range can
+// cross midnight (e.g. "20:00 - 08:00" for an overnight segment) -- when
+// the end time-of-day is not after the start time-of-day, the end is on
+// the *next* calendar date, so advance it by a day. Without this, an
+// overnight event would look like it ended twelve hours before it starts.
 function parseDateTime(date: string, time: string, isEnd = false) {
   const [start, end] = time.split(' - ');
   const t = isEnd ? end : start;
-  return new Date(`${date}T${t}:00`);
+  const result = new Date(`${date}T${t}:00`);
+  if (isEnd && timeStartMinutes(end) <= timeStartMinutes(start)) {
+    result.setDate(result.getDate() + 1);
+  }
+  return result;
 }
 
 // Only show events that have not ended yet
