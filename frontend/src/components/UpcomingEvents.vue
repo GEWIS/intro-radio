@@ -122,4 +122,19 @@ function isCurrentEvent(event: AgendaEvent) {
   border: 3px solid #ff9800 !important;
   box-shadow: 0 0 0 2px #fff176;
 }
+
+/* v-expand-transition only animates height by default; layer a scale + fade
+   on top of it so opening/closing reads as the content growing into place
+   instead of a flat height slide. */
+.expand-transition-enter-active,
+.expand-transition-leave-active {
+  transition-property: height, transform, opacity !important;
+  transform-origin: top center;
+}
+
+.expand-transition-enter-from,
+.expand-transition-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
+}
 </style>
