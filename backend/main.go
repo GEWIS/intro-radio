@@ -126,6 +126,10 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "application/json")
+		// Admin edits must show up on the very next GET; without this, a
+		// browser or intermediary cache could keep serving a stale
+		// schedule after a PUT.
+		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(agenda.List())
 	case http.MethodPut:
 		var req AgendaPutRequest
