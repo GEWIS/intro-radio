@@ -10,7 +10,22 @@
         <router-link to="/backoffice">Back to chat</router-link>
       </div>
 
-      <v-card v-if="gate.stage.value === 'auth'" class="p-4" color="surface-variant" rounded="lg" variant="tonal">
+      <v-alert v-if="loadError" class="mb-4" type="error">
+        Could not load the agenda from the server, so there is nothing safe to edit yet -- opening the editor on an empty
+        list would let the next save wipe the real schedule. Nothing has been changed.
+
+        <div class="mt-3">
+          <v-btn variant="tonal" @click="load">Retry</v-btn>
+        </div>
+      </v-alert>
+
+      <v-card
+        v-else-if="gate.stage.value === 'auth'"
+        class="p-4"
+        color="surface-variant"
+        rounded="lg"
+        variant="tonal"
+      >
         <v-skeleton-loader type="paragraph, actions" />
       </v-card>
 
@@ -76,10 +91,13 @@ const appStore = useAppStore();
 const keyInput = ref('');
 const saving = ref(false);
 const saveError = ref('');
+const loadError = ref(false);
 const initialEvents = ref<AgendaEvent[]>([]);
 const editorRef = ref<InstanceType<typeof AgendaEditor> | null>(null);
 
-onMounted(async () => {
+async function load() {
+  loadError.value = false;
+
   // Fetch the agenda before resolving the gate, not after: GET /api/v1/agenda
   // is public and needs no auth, and AgendaEditor (via useAgendaEditor) seeds
   // its local editing state from the `initial` prop only once, at the moment
@@ -87,10 +105,23 @@ onMounted(async () => {
   // Awaiting gate.init() first would let that mount happen while
   // initialEvents is still its empty placeholder, permanently starting the
   // editor with an empty list even once the real data arrives.
-  await appStore.fetchAgenda();
-  initialEvents.value = appStore.agenda;
+  const loaded = await appStore.fetchAgenda();
+
+  // fetchAgenda resolves to undefined on any failure (see its comment in
+  // stores/app.ts). Bail out before the gate resolves rather than mounting
+  // the editor on an empty list: saving is a whole-list PUT, so adding one
+  // event to a list that only *looks* empty would replace the entire real
+  // schedule with it.
+  if (!loaded) {
+    loadError.value = true;
+    return;
+  }
+
+  initialEvents.value = loaded;
   await gate.init();
-});
+}
+
+onMounted(load);
 
 async function submitKey() {
   await gate.submitKey(keyInput.value);
@@ -123,11 +154,27 @@ async function save() {
     });
 
     if (res.status === 401) {
-      gate.dropToNeedKey('Your admin key was rejected. Please sign in again.');
+      // Deliberately *not* gate.dropToNeedKey(): that flips stage off
+      // 'ready', which unmounts AgendaEditor and takes every unsaved edit
+      // made since page load with it -- not just the one that failed.
+      // Re-entering the key wouldn't buy that back either, because
+      // useAdminGate captures the GEWIS token once in init() and
+      // submitKey() re-validates that same one, so an expired token fails
+      // identically every time. A reload is the honest advice; leaving
+      // stage alone keeps the editor (and the edits) on screen until then.
+      saveError.value =
+        'Your session expired. Reload the page to sign in again -- your changes are still here until you do.';
       return;
     }
     if (!res.ok) {
-      saveError.value = 'Could not save the agenda. Your changes are still here -- try again.';
+      // Show the backend's own message. A 400 here means one of the events
+      // failed validation, and it names which field on which event; the
+      // generic "try again" this used to show was actively misleading,
+      // since retrying the same invalid event fails the same way forever.
+      const detail = (await res.text()).trim();
+      saveError.value = detail
+        ? `Could not save: ${detail} -- your changes are still here.`
+        : 'Could not save the agenda. Your changes are still here -- try again.';
       return;
     }
 

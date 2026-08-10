@@ -1,8 +1,41 @@
 import type { AgendaEvent } from '@/stores/app';
 import { computed, ref, toRaw } from 'vue';
 
+/**
+ * Today in YYYY-MM-DD, in the *local* timezone. Deliberately not
+ * `toISOString().slice(0, 10)`: that formats in UTC, so anyone in CEST
+ * adding an event after midnight would get yesterday's date prefilled.
+ */
+function todayLocalISODate(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+/**
+ * A blank-but-valid new event. Every field is prefilled rather than left
+ * empty on purpose: backend/agenda.go's validateAgendaEvent rejects an
+ * empty icon or iconColor and demands 6-digit hex for color/colorDark, so
+ * an all-empty event makes the most obvious first-use flow (add an event,
+ * type a title and a time, save) fail with a 400 that no amount of
+ * retrying can clear. The defaults below are chosen to pass that
+ * validation as-is -- keep them in sync with it.
+ *
+ * iconColor is a hex value rather than a theme name like 'primary' even
+ * though the backend accepts either: IconColorPicker edits it with a
+ * v-color-picker, and Vuetify's parseColor console-warns twice on any
+ * string it can't read as hex. #1867C0 is Vuetify's own default primary.
+ */
 export function emptyAgendaEvent(): AgendaEvent {
-  return { title: '', subtitle: '', icon: '', iconColor: '', color: '', colorDark: '', date: '', time: '' };
+  return {
+    title: '',
+    subtitle: '',
+    icon: 'mdi-calendar-star',
+    iconColor: '#1867C0',
+    color: '#FFFFFF',
+    colorDark: '#000000',
+    date: todayLocalISODate(),
+    time: '9:00 - 10:00',
+  };
 }
 
 /**
@@ -53,6 +86,13 @@ export function useAgendaEditor(initial: AgendaEvent[]) {
     const copy = events.value;
     [copy[index], copy[index + 1]] = [copy[index + 1], copy[index]];
   }
+
+  // Unlike update() above, markSaved and reset both replace *every* event
+  // with a fresh clone, so no reference a caller was holding into `events`
+  // survives them. Anything tracking an event by object identity (e.g.
+  // AgendaEditor.vue's expanded row) has to re-resolve it afterwards --
+  // backoffice/agenda.vue's save() does that by capturing the expanded
+  // event's position first and re-expanding by position after.
 
   function markSaved(newEvents: AgendaEvent[]) {
     saved.value = structuredClone(toRaw(newEvents));

@@ -1,6 +1,6 @@
 import type { AgendaEvent } from '@/stores/app';
 import { describe, expect, it } from 'vitest';
-import { useAgendaEditor } from '../useAgendaEditor';
+import { emptyAgendaEvent, useAgendaEditor } from '../useAgendaEditor';
 
 function makeEvent(title: string): AgendaEvent {
   return {
@@ -14,6 +14,29 @@ function makeEvent(title: string): AgendaEvent {
     time: '9:00 - 10:00',
   };
 }
+
+describe('emptyAgendaEvent', () => {
+  // Mirrors backend/agenda.go's validateAgendaEvent. A newly added event
+  // has to clear that validation with nothing filled in but a title, or
+  // else "add event, type a title, save" 400s and no retry ever fixes it.
+  it('produces an event the backend accepts without further editing', () => {
+    const event = emptyAgendaEvent();
+
+    expect(event.icon).not.toBe('');
+    expect(event.iconColor).not.toBe('');
+    expect(event.color).toMatch(/^#[\da-f]{6}$/i);
+    expect(event.colorDark).toMatch(/^#[\da-f]{6}$/i);
+    expect(event.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(event.time).toMatch(/^\d{1,2}:\d{2} - \d{1,2}:\d{2}$/);
+  });
+
+  it("defaults the date to today in the user's own timezone", () => {
+    const now = new Date();
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    expect(emptyAgendaEvent().date).toBe(expected);
+  });
+});
 
 describe('useAgendaEditor', () => {
   it('starts not dirty', () => {
