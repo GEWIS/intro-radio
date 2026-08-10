@@ -55,4 +55,19 @@ function goToSpotify() {
   transform: rotate(180deg);
   transition: transform 150ms;
 }
+
+/* v-expand-transition only animates height by default; layer a scale + fade
+   on top of it so opening/closing reads as the content growing into place
+   instead of a flat height slide. */
+.expand-transition-enter-active,
+.expand-transition-leave-active {
+  transition-property: height, transform, opacity !important;
+  transform-origin: top center;
+}
+
+.expand-transition-enter-from,
+.expand-transition-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
+}
 </style>
