@@ -325,6 +325,42 @@ func TestAgendaHandlerPutRejectsWithoutMutatingState(t *testing.T) {
 	}
 }
 
+// TestAgendaHandlerPutWriteFailureReturns500 covers the other half of the
+// split Replace() makes between bad input and a broken filesystem: a
+// read-only agenda directory is a server fault, so it must not come back as
+// a 400 telling the admin their perfectly valid event was rejected, and the
+// response must not echo the agenda file's path back to them.
+func TestAgendaHandlerPutWriteFailureReturns500(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+
+	dir := t.TempDir()
+	agenda := NewAgenda(filepath.Join(dir, "agenda.json"))
+	if err := agenda.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	makeDirUnwritable(t, dir)
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	valid := AgendaEvent{Title: "New Event", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
+	body, err := json.Marshal(AgendaPutRequest{Token: validTok, RadioKey: "correct-key", Events: []AgendaEvent{valid}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agenda", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), dir) {
+		t.Fatalf("expected the response body not to leak the agenda file's path, got %q", rec.Body.String())
+	}
+}
+
 func TestAgendaHandlerWrongMethod(t *testing.T) {
 	chat := NewChat()
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))

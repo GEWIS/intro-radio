@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // AgendaEvent is one entry on the public "Radio Schedule." Field names and
@@ -39,6 +41,15 @@ var (
 	hexColorPattern  = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 )
 
+// agendaValidationError marks a Replace() failure as "the caller sent
+// something unacceptable" rather than "this server could not persist it."
+// The HTTP handler needs that distinction to answer 400 vs 500: a full
+// disk or a read-only mount is not the client's fault, and its error text
+// (which carries the agenda file's path) must not be echoed back to them.
+type agendaValidationError struct{ msg string }
+
+func (e *agendaValidationError) Error() string { return e.msg }
+
 // Agenda holds the current schedule, backed by a JSON file on disk so
 // edits made through the backoffice survive restarts and redeploys.
 type Agenda struct {
@@ -55,10 +66,28 @@ func NewAgenda(path string) *Agenda {
 // persisting that default immediately) if the file doesn't exist yet -- so
 // the very first deploy isn't blank and there's always something on disk
 // to edit.
+//
+// The two failure modes are deliberately not treated alike, because main()
+// makes any error here fatal. A seed write that fails (read-only mount,
+// full disk, an AGENDA_FILE pointing somewhere the process can't create)
+// is downgraded to a warning: the in-memory defaults are still perfectly
+// serveable, and crash-looping a previously healthy service over a
+// persistence hiccup is strictly worse than running read-only until
+// someone fixes the volume. A file that *is* present but unreadable or
+// corrupt stays fatal -- there we'd be silently replacing real, curated
+// schedule data with the built-in defaults, and the next save would
+// overwrite the file that was about to be recovered.
 func (a *Agenda) Load() error {
 	data, err := os.ReadFile(a.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return a.Replace(defaultAgendaEvents())
+		if err := a.Replace(defaultAgendaEvents()); err != nil {
+			log.Warn().Err(err).Str("path", a.path).
+				Msg("could not seed the agenda file; serving the built-in defaults from memory, edits will not persist")
+			a.mutex.Lock()
+			a.events = defaultAgendaEvents()
+			a.mutex.Unlock()
+		}
+		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("reading agenda file: %w", err)
@@ -90,6 +119,10 @@ func (a *Agenda) List() []AgendaEvent {
 // memory. A validation failure or a write failure leaves both the
 // in-memory and on-disk state exactly as they were -- the server never
 // ends up serving something that didn't actually persist.
+//
+// Rejected input comes back as an *agendaValidationError so callers can
+// tell it apart from a genuine persistence failure; every other error
+// returned here is server-side and its text is not safe to show a client.
 func (a *Agenda) Replace(events []AgendaEvent) error {
 	// Hold the write lock for the entire sequence to prevent concurrent
 	// calls from interfering with each other at the filesystem level.
@@ -98,7 +131,7 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 
 	for i, e := range events {
 		if err := validateAgendaEvent(e); err != nil {
-			return fmt.Errorf("event %d (%q): %w", i, e.Title, err)
+			return &agendaValidationError{msg: fmt.Sprintf("event %d (%q): %v", i, e.Title, err)}
 		}
 	}
 

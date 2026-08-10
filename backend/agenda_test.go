@@ -2,12 +2,29 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 )
+
+// makeDirUnwritable drops the write bit on dir so that writes inside it
+// fail, and restores it when the test ends (t.TempDir()'s own cleanup would
+// otherwise be unable to delete the directory). Skips the calling test when
+// running as root, where the mode bits are simply not enforced and the
+// failure being exercised would never happen.
+func makeDirUnwritable(t *testing.T, dir string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: mode 0500 does not stop root from writing, so a write failure cannot be simulated")
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod %s: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+}
 
 func TestAgendaLoadSeedsDefaultWhenFileMissing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agenda.json")
@@ -55,6 +72,43 @@ func TestAgendaLoadReadsExistingFile(t *testing.T) {
 	}
 }
 
+func TestAgendaLoadSeedWriteFailureIsNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	makeDirUnwritable(t, dir)
+	path := filepath.Join(dir, "agenda.json")
+
+	a := NewAgenda(path)
+	if err := a.Load(); err != nil {
+		t.Fatalf("expected a failed seed write to be non-fatal, got: %v", err)
+	}
+
+	got := a.List()
+	want := defaultAgendaEvents()
+	if len(got) != len(want) || got[0].Title != want[0].Title {
+		t.Fatalf("expected the built-in defaults to still be served from memory, got %+v", got)
+	}
+
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no agenda file to have been written, got err=%v", err)
+	}
+}
+
+func TestAgendaLoadCorruptFileStaysFatal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agenda.json")
+	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	// An existing-but-unparseable file must keep failing loudly: falling
+	// back to the defaults here would mean quietly serving them over real
+	// schedule data, and the next save would overwrite the very file
+	// someone still has a chance to repair.
+	a := NewAgenda(path)
+	if err := a.Load(); err == nil {
+		t.Fatalf("expected Load to fail on a corrupt agenda file")
+	}
+}
+
 func validAgendaEventFixture() AgendaEvent {
 	return AgendaEvent{Title: "T", Subtitle: "S", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
 }
@@ -80,7 +134,52 @@ func TestAgendaReplaceValidation(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected an error, got nil")
 			}
+			// The HTTP layer answers 400 vs 500 off this distinction, so
+			// bad input has to arrive typed as a validation failure.
+			var invalid *agendaValidationError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("expected an *agendaValidationError, got %T: %v", err, err)
+			}
 		})
+	}
+}
+
+func TestAgendaReplaceWriteFailureIsNotAValidationError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agenda.json")
+	a := NewAgenda(path)
+
+	good := []AgendaEvent{validAgendaEventFixture()}
+	if err := a.Replace(good); err != nil {
+		t.Fatalf("Replace(good): %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading agenda file: %v", err)
+	}
+
+	makeDirUnwritable(t, dir)
+
+	next := []AgendaEvent{validAgendaEventFixture()}
+	next[0].Title = "Should Not Persist"
+	err = a.Replace(next)
+	if err == nil {
+		t.Fatalf("expected Replace to fail when the agenda directory is not writable")
+	}
+	var invalid *agendaValidationError
+	if errors.As(err, &invalid) {
+		t.Fatalf("expected a server-side error so the handler answers 500, got a validation error: %v", err)
+	}
+
+	if got := a.List(); len(got) != 1 || got[0].Title != validAgendaEventFixture().Title {
+		t.Fatalf("expected in-memory state unchanged after a failed write, got %+v", got)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading agenda file after the failed write: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected the on-disk file unchanged after a failed write, before=%s after=%s", before, after)
 	}
 }
 

@@ -140,7 +140,18 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 			return
 		}
 		if err := agenda.Replace(req.Events); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			// Only rejected input earns a 400 with its own message. A
+			// write failure is our problem, not the caller's, and its
+			// error text names the agenda file's path -- so that goes to
+			// the log for an operator to act on and comes back as a bare
+			// 500.
+			var invalid *agendaValidationError
+			if errors.As(err, &invalid) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			log.Error().Err(err).Msg("could not persist the agenda")
+			http.Error(w, "the server could not persist the agenda", http.StatusInternalServerError)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(agenda.List())
@@ -183,16 +194,24 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 func main() {
 	chat := NewChat()
 
-	agenda := NewAgenda(agendaFile)
-	if err := agenda.Load(); err != nil {
-		log.Fatal().Err(err).Msg("could not load agenda")
-	}
-
+	// Set the log level before loading the agenda, so the agenda's own
+	// startup logging below actually honours LOG_LEVEL.
 	l, err := zerolog.ParseLevel(logLevel)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not parse level")
 	}
 	zerolog.SetGlobalLevel(l)
+
+	agenda := NewAgenda(agendaFile)
+	if err := agenda.Load(); err != nil {
+		log.Fatal().Err(err).Msg("could not load agenda")
+	}
+	// Log where the agenda actually came from, not just that it loaded: an
+	// AGENDA_FILE left at its relative default lands inside the container's
+	// ephemeral filesystem, which silently discards every edit on redeploy.
+	// That is invisible until someone notices their changes are gone, so
+	// make the resolved path and event count a first-deploy log line.
+	log.Info().Str("path", agendaFile).Int("events", len(agenda.List())).Msg("agenda loaded")
 
 	srv := newHTTPServer(port, newMux(chat, agenda))
 
