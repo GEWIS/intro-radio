@@ -2,7 +2,7 @@ import type { AgendaEvent } from '@/stores/app';
 import { describe, expect, it } from 'vitest';
 import { emptyAgendaEvent, useAgendaEditor } from '../useAgendaEditor';
 
-function makeEvent(title: string): AgendaEvent {
+function makeEvent(title: string, date = '2026-01-01', time = '9:00 - 10:00'): AgendaEvent {
   return {
     title,
     subtitle: '',
@@ -10,8 +10,8 @@ function makeEvent(title: string): AgendaEvent {
     iconColor: 'blue',
     color: '#fff',
     colorDark: '#000',
-    date: '2026-01-01',
-    time: '9:00 - 10:00',
+    date,
+    time,
   };
 }
 
@@ -69,20 +69,52 @@ describe('useAgendaEditor', () => {
     expect(editor.events.value.map((e) => e.title)).toEqual(['B']);
   });
 
-  it('moveUp and moveDown swap adjacent events', () => {
-    const editor = useAgendaEditor([makeEvent('A'), makeEvent('B'), makeEvent('C')]);
-    editor.moveDown(0);
-    expect(editor.events.value.map((e) => e.title)).toEqual(['B', 'A', 'C']);
+  it('sort orders events by date, then by start time within a date', () => {
+    const editor = useAgendaEditor([
+      makeEvent('late-on-2nd', '2026-01-02', '20:00 - 21:00'),
+      makeEvent('early-on-1st', '2026-01-01', '9:00 - 10:00'),
+      makeEvent('early-on-2nd', '2026-01-02', '8:00 - 09:00'),
+      makeEvent('late-on-1st', '2026-01-01', '18:00 - 19:00'),
+    ]);
 
-    editor.moveUp(2);
-    expect(editor.events.value.map((e) => e.title)).toEqual(['B', 'C', 'A']);
+    editor.sort();
+
+    expect(editor.events.value.map((e) => e.title)).toEqual([
+      'early-on-1st',
+      'late-on-1st',
+      'early-on-2nd',
+      'late-on-2nd',
+    ]);
   });
 
-  it('moveUp at index 0 and moveDown at the last index are no-ops', () => {
-    const editor = useAgendaEditor([makeEvent('A'), makeEvent('B')]);
-    editor.moveUp(0);
-    editor.moveDown(1);
-    expect(editor.events.value.map((e) => e.title)).toEqual(['A', 'B']);
+  it('sort keeps the original relative order for a tie on date and start time', () => {
+    // Array.prototype.sort is stable since ES2019, so two events with an
+    // identical (date, start-of-time) key must not swap places.
+    const editor = useAgendaEditor([
+      makeEvent('first', '2026-01-01', '9:00 - 10:00'),
+      makeEvent('second', '2026-01-01', '9:00 - 11:00'),
+    ]);
+
+    editor.sort();
+
+    expect(editor.events.value.map((e) => e.title)).toEqual(['first', 'second']);
+  });
+
+  it('sort is a no-op on an already-sorted list', () => {
+    const editor = useAgendaEditor([
+      makeEvent('first', '2026-01-01', '9:00 - 10:00'),
+      makeEvent('second', '2026-01-02', '9:00 - 10:00'),
+    ]);
+
+    editor.sort();
+
+    expect(editor.events.value.map((e) => e.title)).toEqual(['first', 'second']);
+  });
+
+  it('sort is a no-op on an empty list', () => {
+    const editor = useAgendaEditor([]);
+    editor.sort();
+    expect(editor.events.value).toEqual([]);
   });
 
   it('markSaved resets the dirty baseline', () => {

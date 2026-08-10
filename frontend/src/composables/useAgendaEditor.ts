@@ -40,10 +40,10 @@ export function emptyAgendaEvent(): AgendaEvent {
 
 /**
  * Local, unsaved editing state for the agenda admin page: a working copy
- * of the event list plus add/edit/delete/reorder, and dirty-tracking
- * against the last-saved snapshot so the page only offers "Save changes"
- * when there's something to save. Nothing here touches the network --
- * that's the caller's job (see backoffice/agenda.vue).
+ * of the event list plus add/edit/delete/sort, and dirty-tracking against
+ * the last-saved snapshot so the page only offers "Save changes" when
+ * there's something to save. Nothing here touches the network -- that's
+ * the caller's job (see backoffice/agenda.vue).
  */
 export function useAgendaEditor(initial: AgendaEvent[]) {
   // toRaw() before every structuredClone() call in this file is load-bearing,
@@ -75,16 +75,25 @@ export function useAgendaEditor(initial: AgendaEvent[]) {
     events.value.splice(index, 1);
   }
 
-  function moveUp(index: number) {
-    if (index <= 0) return;
-    const copy = events.value;
-    [copy[index - 1], copy[index]] = [copy[index], copy[index - 1]];
+  // Events are always displayed in chronological order now (the companion
+  // backend change sorts the same way in Replace()/Load(), making the
+  // server the ultimate source of truth) rather than an admin-arranged
+  // manual order, so there's no moveUp/moveDown here anymore -- see sort().
+
+  function timeStartMinutes(time: string): number {
+    const [start] = time.split(' - ');
+    const [h, m] = start.split(':').map(Number);
+    return h * 60 + m;
   }
 
-  function moveDown(index: number) {
-    if (index >= events.value.length - 1) return;
-    const copy = events.value;
-    [copy[index], copy[index + 1]] = [copy[index + 1], copy[index]];
+  // Array.prototype.sort has been stable since ES2019, so ties (same date
+  // and start time) keep their existing relative order for free. A
+  // malformed `time` value (e.g. mid-edit, before the admin has finished
+  // typing) makes timeStartMinutes return NaN for that entry -- an
+  // accepted, self-correcting edge case: the row's position just becomes
+  // unpredictable until the value is valid again, it won't crash.
+  function sort() {
+    events.value.sort((a, b) => a.date.localeCompare(b.date) || timeStartMinutes(a.time) - timeStartMinutes(b.time));
   }
 
   // Unlike update() above, markSaved and reset both replace *every* event
@@ -103,5 +112,5 @@ export function useAgendaEditor(initial: AgendaEvent[]) {
     events.value = structuredClone(toRaw(saved.value));
   }
 
-  return { events, isDirty, add, update, remove, moveUp, moveDown, markSaved, reset };
+  return { events, isDirty, add, update, remove, sort, markSaved, reset };
 }
