@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-card v-for="(event, index) in events" :key="event as unknown as string" class="mb-2" variant="outlined">
+    <v-card v-for="(event, index) in events" :key="event as unknown as PropertyKey" class="mb-2" variant="outlined">
       <v-card-item v-if="expandedIndex !== index">
         <template #prepend>
           <v-icon :color="event.iconColor">{{ event.icon || 'mdi-help-circle-outline' }}</v-icon>
@@ -59,7 +59,7 @@ const { events } = editor;
 // objects (only markSaved()/reset() do, and neither is called from here),
 // so Vue's Map-based, reference-equality key diffing (see
 // patchKeyedChildren/isSameVNodeType in @vue/runtime-core) keeps each
-// row's identity stable across a resort too. The `as unknown as string`
+// row's identity stable across a resort too. The `as unknown as PropertyKey`
 // cast is type-only -- values pass through unchanged at runtime -- and is
 // needed only because the `key` prop's own .d.ts type is `PropertyKey`,
 // narrower than what the diffing algorithm actually accepts.

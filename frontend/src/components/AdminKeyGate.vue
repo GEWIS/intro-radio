@@ -20,7 +20,7 @@
         />
 
         <div class="w-full d-flex justify-end">
-          <v-btn color="primary" :loading="validating" type="submit">Continue</v-btn>
+          <v-btn color="primary" :disabled="validating" :loading="validating" type="submit">Continue</v-btn>
         </div>
       </form>
     </v-card>
