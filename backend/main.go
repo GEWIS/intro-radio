@@ -30,6 +30,12 @@ type RadioKeyValidateResponse struct {
 	Valid bool `json:"valid"`
 }
 
+type AgendaPutRequest struct {
+	Token    string        `json:"token"`
+	RadioKey string        `json:"radioKey"`
+	Events   []AgendaEvent `json:"events"`
+}
+
 var (
 	port            = String("PORT", ":8080")
 	videoURL        = String("RADIO_VIDEO_URL", "https://hd-auth.skylinewebcams.com/live.m3u8?a=2j5v70ov5ng6jq544ji0u6kjh3")
@@ -110,10 +116,54 @@ func radioKeyValidateHandler(chat *Chat, w http.ResponseWriter, r *http.Request)
 	_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: true})
 }
 
+// agendaHandler backs both GET and PUT /api/v1/agenda. GET is public (the
+// schedule is shown to every visitor on the landing page); PUT is gated by
+// the same {token, radioKey} check radioKeyValidateHandler uses, reusing
+// chat.VerifyRadioKey rather than duplicating it. The whole list is read
+// and replaced in one shot -- see agenda.go's Agenda.Replace doc comment
+// for why per-event IDs aren't needed at this scale.
+func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(agenda.List())
+	case http.MethodPut:
+		var req AgendaPutRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+			return
+		}
+		if err := agenda.Replace(req.Events); err != nil {
+			// Only rejected input earns a 400 with its own message. A
+			// write failure is our problem, not the caller's, and its
+			// error text names the agenda file's path -- so that goes to
+			// the log for an operator to act on and comes back as a bare
+			// 500.
+			var invalid *agendaValidationError
+			if errors.As(err, &invalid) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			log.Error().Err(err).Msg("could not persist the agenda")
+			http.Error(w, "the server could not persist the agenda", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(agenda.List())
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 // newMux wires up all HTTP and WebSocket routes on a fresh ServeMux, rather
 // than registering on http.DefaultServeMux, so it can be constructed
 // independently in tests.
-func newMux(chat *Chat) *http.ServeMux {
+func newMux(chat *Chat, agenda *Agenda) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", chat.HandleWS)
 	mux.HandleFunc("/api/v1/health", healthHandler)
@@ -121,6 +171,9 @@ func newMux(chat *Chat) *http.ServeMux {
 	mux.HandleFunc("/api/v1/radio", radioHandler)
 	mux.HandleFunc("/api/v1/radio-key/validate", func(w http.ResponseWriter, r *http.Request) {
 		radioKeyValidateHandler(chat, w, r)
+	})
+	mux.HandleFunc("/api/v1/agenda", func(w http.ResponseWriter, r *http.Request) {
+		agendaHandler(chat, agenda, w, r)
 	})
 	return mux
 }
@@ -141,13 +194,26 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 func main() {
 	chat := NewChat()
 
+	// Set the log level before loading the agenda, so the agenda's own
+	// startup logging below actually honours LOG_LEVEL.
 	l, err := zerolog.ParseLevel(logLevel)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not parse level")
 	}
 	zerolog.SetGlobalLevel(l)
 
-	srv := newHTTPServer(port, newMux(chat))
+	agenda := NewAgenda(agendaFile)
+	if err := agenda.Load(); err != nil {
+		log.Fatal().Err(err).Msg("could not load agenda")
+	}
+	// Log where the agenda actually came from, not just that it loaded: an
+	// AGENDA_FILE left at its relative default lands inside the container's
+	// ephemeral filesystem, which silently discards every edit on redeploy.
+	// That is invisible until someone notices their changes are gone, so
+	// make the resolved path and event count a first-deploy log line.
+	log.Info().Str("path", agendaFile).Int("events", len(agenda.List())).Msg("agenda loaded")
+
+	srv := newHTTPServer(port, newMux(chat, agenda))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

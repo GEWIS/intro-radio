@@ -48,6 +48,7 @@ It is designed to pair with a WebSocket-capable frontend; [GEWIS/radioweb](https
 | `RADIO_AUDIO_MOUNT_POINT` | `/high`                                                                        | Mount point for the audio stream, returned by `GET /api/v1/radio`.                                |
 | `RADIO_START_TIME`        | `2025-08-18T07:00:00Z`                                                         | Broadcast start time, returned by `GET /api/v1/radio`.                                            |
 | `RADIO_GEWIS_TOKEN`       | `gewis-radio`                                                                  | Token value returned by `GET /api/v1/token`.                                                      |
+| `AGENDA_FILE`             | `agenda.json`                                                                  | Path to the JSON file the agenda is persisted to. Defaults to `agenda.json` (relative to the working directory), which is fine for local development. **Production deployments must set this to a path under a mounted volume** (e.g. `/data/agenda.json`) so admin edits survive redeploys -- the container itself has no persistent disk otherwise. |
 | `LOG_LEVEL`               | `trace`                                                                        | zerolog log level (`trace`, `debug`, `info`, `warn`, `error`, ...).                               |
 
 The defaults for `GEWIS_SECRET` and `RADIO_CHAT_KEY` are placeholder values meant for local development only -- set real values in any production deployment.

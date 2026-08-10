@@ -59,9 +59,11 @@
 </template>
 
 <script setup lang="ts">
+import type { AgendaEvent } from '@/stores/app';
+import { storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
-import schedule from '@/assets/schedule.json';
 import { useDarkMode } from '@/composables/useDarkMode.ts';
+import { useAppStore } from '@/stores/app';
 
 const { isDark } = useDarkMode();
 
@@ -71,17 +73,7 @@ function toggle() {
   expanded.value = !expanded.value;
 }
 
-type Event = {
-  title: string;
-  subtitle: string;
-  icon: string;
-  iconColor: string;
-  color: string;
-  colorDark: string;
-  date: string;
-  time: string;
-};
-const events = schedule as Event[];
+const { agenda: events } = storeToRefs(useAppStore());
 
 // Helper to parse "YYYY-MM-DD HH:mm" to Date
 function parseDateTime(date: string, time: string, isEnd = false) {
@@ -93,7 +85,7 @@ function parseDateTime(date: string, time: string, isEnd = false) {
 // Only show events that have not ended yet
 const upcomingEvents = computed(() => {
   const now = new Date();
-  return events.filter((event) => {
+  return events.value.filter((event) => {
     const end = parseDateTime(event.date, event.time, true);
     return now < end;
   });
@@ -101,7 +93,7 @@ const upcomingEvents = computed(() => {
 
 // Group events by date and sort by date
 const groupedEvents = computed(() => {
-  const groups: Record<string, Event[]> = {};
+  const groups: Record<string, AgendaEvent[]> = {};
   for (const event of upcomingEvents.value) {
     if (!groups[event.date]) groups[event.date] = [];
     groups[event.date].push(event);
@@ -117,7 +109,7 @@ function getWeekday(dateStr: string) {
 }
 
 // Check if event is current
-function isCurrentEvent(event: Event) {
+function isCurrentEvent(event: AgendaEvent) {
   const now = new Date();
   const start = parseDateTime(event.date, event.time);
   const end = parseDateTime(event.date, event.time, true);

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,8 +21,9 @@ func TestServerTimeoutsDoNotKillWebSocket(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "ChangeMe"
 	chat := NewChat()
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
 
-	ts := httptest.NewUnstartedServer(newMux(chat))
+	ts := httptest.NewUnstartedServer(newMux(chat, agenda))
 	ts.Config.ReadHeaderTimeout = 50 * time.Millisecond
 	ts.Config.ReadTimeout = 50 * time.Millisecond
 	ts.Config.WriteTimeout = 50 * time.Millisecond
@@ -203,7 +205,8 @@ func TestRadioKeyValidateRouteRegistered(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "correct-key"
 	chat := NewChat()
-	mux := newMux(chat)
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	mux := newMux(chat, agenda)
 
 	tok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
 	body, err := json.Marshal(RadioKeyValidateRequest{Token: tok, RadioKey: "correct-key"})
@@ -227,11 +230,171 @@ func TestRadioKeyValidateRouteRegistered(t *testing.T) {
 	}
 }
 
+func TestAgendaHandlerGet(t *testing.T) {
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	if err := agenda.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	chat := NewChat()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agenda", nil)
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	var got []AgendaEvent
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(got) != len(defaultAgendaEvents()) {
+		t.Fatalf("expected the seeded default list, got %d events", len(got))
+	}
+}
+
+func TestAgendaHandlerPut(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	if err := agenda.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	newEvent := AgendaEvent{Title: "New Event", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
+
+	tests := []struct {
+		name       string
+		token      string
+		radioKey   string
+		events     []AgendaEvent
+		wantStatus int
+	}{
+		{"valid token and key", validTok, "correct-key", []AgendaEvent{newEvent}, http.StatusOK},
+		{"wrong key", validTok, "wrong-key", []AgendaEvent{newEvent}, http.StatusUnauthorized},
+		{"invalid event", validTok, "correct-key", []AgendaEvent{{Title: ""}}, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(AgendaPutRequest{Token: tt.token, RadioKey: tt.radioKey, Events: tt.events})
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/agenda", strings.NewReader(string(body)))
+			rec := httptest.NewRecorder()
+
+			agendaHandler(chat, agenda, rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d (body=%s)", tt.wantStatus, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAgendaHandlerPutRejectsWithoutMutatingState(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	if err := agenda.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	before := agenda.List()
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	body, err := json.Marshal(AgendaPutRequest{Token: validTok, RadioKey: "correct-key", Events: []AgendaEvent{{Title: ""}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agenda", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+	after := agenda.List()
+	if len(after) != len(before) || after[0].Title != before[0].Title {
+		t.Fatalf("expected agenda state unchanged after a rejected PUT, before=%+v after=%+v", before, after)
+	}
+}
+
+// TestAgendaHandlerPutWriteFailureReturns500 covers the other half of the
+// split Replace() makes between bad input and a broken filesystem: a
+// read-only agenda directory is a server fault, so it must not come back as
+// a 400 telling the admin their perfectly valid event was rejected, and the
+// response must not echo the agenda file's path back to them.
+func TestAgendaHandlerPutWriteFailureReturns500(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+
+	dir := t.TempDir()
+	agenda := NewAgenda(filepath.Join(dir, "agenda.json"))
+	if err := agenda.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	makeDirUnwritable(t, dir)
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	valid := AgendaEvent{Title: "New Event", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
+	body, err := json.Marshal(AgendaPutRequest{Token: validTok, RadioKey: "correct-key", Events: []AgendaEvent{valid}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agenda", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), dir) {
+		t.Fatalf("expected the response body not to leak the agenda file's path, got %q", rec.Body.String())
+	}
+}
+
+func TestAgendaHandlerWrongMethod(t *testing.T) {
+	chat := NewChat()
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agenda", nil)
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status 405, got %d", rec.Code)
+	}
+}
+
+func TestAgendaHandlerMalformedJSON(t *testing.T) {
+	chat := NewChat()
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/agenda", strings.NewReader("not json"))
+	rec := httptest.NewRecorder()
+
+	agendaHandler(chat, agenda, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
 func TestNewMuxRoutesRegistered(t *testing.T) {
 	chat := NewChat()
-	mux := newMux(chat)
+	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	mux := newMux(chat, agenda)
 
-	for _, path := range []string{"/api/v1/health", "/api/v1/token", "/api/v1/radio"} {
+	for _, path := range []string{"/api/v1/health", "/api/v1/token", "/api/v1/radio", "/api/v1/agenda"} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		mux.ServeHTTP(rec, req)
