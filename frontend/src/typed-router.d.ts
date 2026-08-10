@@ -30,8 +30,8 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/backoffice': RouteRecordInfo<
-      '/backoffice',
+    '/backoffice/': RouteRecordInfo<
+      '/backoffice/',
       '/backoffice',
       Record<never, never>,
       Record<never, never>,
@@ -56,9 +56,9 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/backoffice.vue': {
+    'src/pages/backoffice/index.vue': {
       routes:
-        | '/backoffice'
+        | '/backoffice/'
       views:
         | never
     }
