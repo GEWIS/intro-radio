@@ -19,37 +19,7 @@
         </div>
       </v-alert>
 
-      <v-card
-        v-else-if="gate.stage.value === 'auth'"
-        class="p-4"
-        color="surface-variant"
-        rounded="lg"
-        variant="tonal"
-      >
-        <v-skeleton-loader type="paragraph, actions" />
-      </v-card>
-
-      <div v-else-if="gate.stage.value === 'need-key'" class="d-flex flex-column align-center w-full">
-        <v-card class="px-4 py-4 w-50" color="surface-variant" rounded="lg" variant="tonal">
-          <div class="text-h6 mb-2">Admin login</div>
-          <div class="text-body-2 mb-4">Enter your radio admin key</div>
-
-          <form @submit.prevent="submitKey">
-            <v-text-field
-              v-model="keyInput"
-              class="mb-3"
-              :error="!!gate.errorMsg.value"
-              :error-messages="gate.errorMsg.value"
-              hide-details="auto"
-              label="Admin key"
-            />
-
-            <div class="w-full d-flex justify-end">
-              <v-btn color="primary" type="submit">Continue</v-btn>
-            </div>
-          </form>
-        </v-card>
-      </div>
+      <AdminKeyGate v-else-if="gate.stage.value !== 'ready'" :gate="gate" />
 
       <template v-else>
         <v-alert v-if="saveError" class="mb-4" closable type="error" @click:close="saveError = ''">
@@ -77,6 +47,7 @@
 <script setup lang="ts">
 import type { AgendaEvent } from '@/stores/app';
 import { onMounted, ref } from 'vue';
+import AdminKeyGate from '@/components/AdminKeyGate.vue';
 import AgendaEditor from '@/components/AgendaEditor.vue';
 import { useAdminGate } from '@/composables/useAdminGate';
 import { useAppStore } from '@/stores/app';
@@ -89,7 +60,6 @@ import { useAppStore } from '@/stores/app';
 const gate = useAdminGate();
 const appStore = useAppStore();
 
-const keyInput = ref('');
 const saving = ref(false);
 const saveError = ref('');
 const loadError = ref(false);
@@ -123,10 +93,6 @@ async function load() {
 }
 
 onMounted(load);
-
-async function submitKey() {
-  await gate.submitKey(keyInput.value);
-}
 
 async function save() {
   if (!editorRef.value) return;
