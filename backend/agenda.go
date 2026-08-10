@@ -37,7 +37,7 @@ var (
 	// backend/README.md.
 	agendaFile = String("AGENDA_FILE", "agenda.json")
 
-	timeRangePattern = regexp.MustCompile(`^\d{1,2}:\d{2} - \d{1,2}:\d{2}$`)
+	timeRangePattern = regexp.MustCompile(`^([01]?\d|2[0-3]):[0-5]\d - ([01]?\d|2[0-3]):[0-5]\d$`)
 	hexColorPattern  = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 )
 

@@ -138,6 +138,42 @@ func TestAgendaLoadRejectsSemanticallyInvalidOnDiskFile(t *testing.T) {
 	}
 }
 
+func TestTimeRangePatternRejectsOutOfRangeValues(t *testing.T) {
+	bad := []string{
+		"25:00 - 26:00", // hour out of range on both sides
+		"99:99 - 05:00", // the original shape-only regex accepted this
+		"24:00 - 00:00", // hours only go up to 23
+		"9:60 - 10:00",  // minutes only go up to 59
+		"9:00 - 10:60",
+	}
+	for _, tr := range bad {
+		if timeRangePattern.MatchString(tr) {
+			t.Errorf("expected %q to be rejected", tr)
+		}
+	}
+}
+
+func TestTimeRangePatternAcceptsEveryPreviouslyValidFormat(t *testing.T) {
+	good := []string{
+		"9:00 - 10:00",  // single-digit hour, as used throughout defaultAgendaEvents
+		"09:00 - 10:00", // zero-padded hour
+		"20:00 - 08:00", // overnight range, as used by the seed data
+		"0:00 - 23:59",  // edges of the valid hour range
+		"23:59 - 00:00",
+	}
+	for _, tr := range good {
+		if !timeRangePattern.MatchString(tr) {
+			t.Errorf("expected %q to still be accepted", tr)
+		}
+	}
+
+	for _, e := range defaultAgendaEvents() {
+		if !timeRangePattern.MatchString(e.Time) {
+			t.Errorf("expected seed event %q's time %q to still be accepted", e.Title, e.Time)
+		}
+	}
+}
+
 func validAgendaEventFixture() AgendaEvent {
 	return AgendaEvent{Title: "T", Subtitle: "S", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"}
 }
@@ -150,6 +186,7 @@ func TestAgendaReplaceValidation(t *testing.T) {
 		{"empty title", func(e AgendaEvent) AgendaEvent { e.Title = ""; return e }},
 		{"bad date", func(e AgendaEvent) AgendaEvent { e.Date = "18-08-2025"; return e }},
 		{"bad time", func(e AgendaEvent) AgendaEvent { e.Time = "9am to 10am"; return e }},
+		{"out-of-range time", func(e AgendaEvent) AgendaEvent { e.Time = "25:00 - 26:00"; return e }},
 		{"empty icon", func(e AgendaEvent) AgendaEvent { e.Icon = ""; return e }},
 		{"empty icon color", func(e AgendaEvent) AgendaEvent { e.IconColor = ""; return e }},
 		{"bad color", func(e AgendaEvent) AgendaEvent { e.Color = "pink"; return e }},
