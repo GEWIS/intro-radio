@@ -9,6 +9,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AdminChat: typeof import('./components/AdminChat.vue')['default']
+    AgendaEditor: typeof import('./components/AgendaEditor.vue')['default']
     AppFooter: typeof import('./components/AppFooter.vue')['default']
     AudioStream: typeof import('./components/AudioStream.vue')['default']
     Credits: typeof import('./components/Credits.vue')['default']
