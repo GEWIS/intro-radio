@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,7 +40,7 @@ var (
 	// backend/README.md.
 	agendaFile = String("AGENDA_FILE", "agenda.json")
 
-	timeRangePattern = regexp.MustCompile(`^\d{1,2}:\d{2} - \d{1,2}:\d{2}$`)
+	timeRangePattern = regexp.MustCompile(`^([01]?\d|2[0-3]):[0-5]\d - ([01]?\d|2[0-3]):[0-5]\d$`)
 	hexColorPattern  = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 )
 
@@ -73,10 +76,10 @@ func NewAgenda(path string) *Agenda {
 // is downgraded to a warning: the in-memory defaults are still perfectly
 // serveable, and crash-looping a previously healthy service over a
 // persistence hiccup is strictly worse than running read-only until
-// someone fixes the volume. A file that *is* present but unreadable or
-// corrupt stays fatal -- there we'd be silently replacing real, curated
-// schedule data with the built-in defaults, and the next save would
-// overwrite the file that was about to be recovered.
+// someone fixes the volume. A file that *is* present but unreadable, fails
+// to parse, or fails validation stays fatal -- there we'd be silently
+// replacing real, curated schedule data with the built-in defaults, and
+// the next save would overwrite the file that was about to be recovered.
 func (a *Agenda) Load() error {
 	data, err := os.ReadFile(a.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -97,6 +100,20 @@ func (a *Agenda) Load() error {
 	if err := json.Unmarshal(data, &events); err != nil {
 		return fmt.Errorf("parsing agenda file: %w", err)
 	}
+	// Unlike Replace(), a validation failure here isn't the caller's fault
+	// to fix through the API -- it's a bad on-disk file, and main() already
+	// treats any Load() error as fatal. So this is a plain wrapped error,
+	// not an *agendaValidationError; that type exists only so the HTTP
+	// handler's errors.As can tell rejected input apart from a persistence
+	// failure, and this code path is never reached from the handler.
+	for i, e := range events {
+		if err := validateAgendaEvent(e); err != nil {
+			return fmt.Errorf("event %d (%q): %w", i, e.Title, err)
+		}
+	}
+	// Normalize a hand-edited or pre-existing on-disk file into chronological
+	// order too, not just events that arrive through Replace().
+	sortAgendaEvents(events)
 
 	a.mutex.Lock()
 	a.events = events
@@ -134,6 +151,11 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 			return &agendaValidationError{msg: fmt.Sprintf("event %d (%q): %v", i, e.Title, err)}
 		}
 	}
+	// The backend is the single source of truth for display order: sort
+	// before persisting so the file on disk, the in-memory state, and the
+	// list returned to the PUT caller all agree, regardless of what order
+	// the request listed events in.
+	sortAgendaEvents(events)
 
 	data, err := json.MarshalIndent(events, "", "  ")
 	if err != nil {
@@ -151,6 +173,13 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 		return fmt.Errorf("writing agenda file: %w", err)
 	}
 	if err := os.Rename(tmp, a.path); err != nil {
+		// Best-effort cleanup so a rename failure doesn't leave the .tmp
+		// file behind forever. If the cleanup itself fails too, that must
+		// not mask the rename error we're about to return -- just log it.
+		if rmErr := os.Remove(tmp); rmErr != nil {
+			log.Warn().Err(rmErr).Str("path", tmp).
+				Msg("could not clean up the stray temp file left behind by a failed rename")
+		}
 		return fmt.Errorf("saving agenda file: %w", err)
 	}
 
@@ -181,6 +210,38 @@ func validateAgendaEvent(e AgendaEvent) error {
 		return fmt.Errorf("colorDark %q must be a 6-digit hex code", e.ColorDark)
 	}
 	return nil
+}
+
+// sortAgendaEvents sorts events in place chronologically by Date and then
+// by the start of Time, so the backend -- not whatever order a PUT request
+// happened to list events in, or whatever order they were manually arranged
+// in on disk -- is the single source of truth for display order.
+// sort.SliceStable (not sort.Slice) keeps events that tie on both keys in
+// their original relative order rather than shuffling them unpredictably
+// between saves.
+//
+// Both call sites only ever run this on already-validated events, so
+// startMinutes' use of strconv.Atoi below can ignore its error return: the
+// "H:MM - H:MM" shape is guaranteed by validateAgendaEvent by that point.
+func sortAgendaEvents(events []AgendaEvent) {
+	sort.SliceStable(events, func(i, j int) bool {
+		if events[i].Date != events[j].Date {
+			// Plain string compare is correct here because Date is always
+			// "YYYY-MM-DD".
+			return events[i].Date < events[j].Date
+		}
+		return startMinutes(events[i].Time) < startMinutes(events[j].Time)
+	})
+}
+
+// startMinutes returns the minutes-since-midnight of the start of a
+// validated "H:MM - H:MM" time range, e.g. "9:30 - 10:00" -> 570.
+func startMinutes(timeRange string) int {
+	start, _, _ := strings.Cut(timeRange, " - ")
+	hour, minute, _ := strings.Cut(start, ":")
+	h, _ := strconv.Atoi(hour)
+	m, _ := strconv.Atoi(minute)
+	return h*60 + m
 }
 
 // defaultAgendaEvents seeds a fresh agenda.json on first boot with what

@@ -10,6 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /radiogaga
 
 FROM alpine
 
+WORKDIR /data
+
 COPY --from=builder /radiogaga /radiogaga
 
 CMD ["/radiogaga"]

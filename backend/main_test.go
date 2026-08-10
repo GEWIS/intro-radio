@@ -245,6 +245,12 @@ func TestAgendaHandlerGet(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d (body=%s)", rec.Code, rec.Body.String())
 	}
+	// The schedule can be edited through the backoffice at any time, so a
+	// GET must never be served stale from a cache -- see the handler's
+	// comment for why.
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("expected Cache-Control: no-store, got %q", cc)
+	}
 	var got []AgendaEvent
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode body: %v", err)

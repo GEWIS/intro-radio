@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-card v-for="(event, index) in events" :key="index" class="mb-2" variant="outlined">
+    <v-card v-for="(event, index) in events" :key="event as unknown as PropertyKey" class="mb-2" variant="outlined">
       <v-card-item v-if="expandedIndex !== index">
         <template #prepend>
           <v-icon :color="event.iconColor">{{ event.icon || 'mdi-help-circle-outline' }}</v-icon>
@@ -10,16 +10,6 @@
         <v-card-subtitle>{{ event.date }} &middot; {{ event.time }}</v-card-subtitle>
 
         <template #append>
-          <v-btn :disabled="index === 0" icon="mdi-arrow-up" size="small" variant="text" @click="editor.moveUp(index)" />
-
-          <v-btn
-            :disabled="index === events.length - 1"
-            icon="mdi-arrow-down"
-            size="small"
-            variant="text"
-            @click="editor.moveDown(index)"
-          />
-
           <v-btn icon="mdi-pencil" size="small" variant="text" @click="expandedEvent = event" />
           <v-btn icon="mdi-delete" size="small" variant="text" @click="confirmRemove(index)" />
         </template>
@@ -41,7 +31,7 @@
         <IconColorPicker :model-value="event" @update:model-value="(v) => editor.update(index, v)" />
 
         <div class="d-flex justify-end mt-2">
-          <v-btn variant="text" @click="expandedEvent = null">Done</v-btn>
+          <v-btn variant="text" @click="finishEditing">Done</v-btn>
         </div>
       </v-card-text>
     </v-card>
@@ -65,10 +55,18 @@ const { events } = editor;
 
 // Tracked by object identity, not array position. Events are distinct
 // objects, so holding the expanded one directly (instead of its index)
-// means the open editor pane stays attached to the right event across
-// reorders and neighboring deletes -- useAgendaEditor's update() mutates
+// means the open editor pane stays attached to the right event across a
+// sort() and neighboring deletes -- useAgendaEditor's update() mutates
 // events in place rather than replacing them, so this reference also
-// survives edits made through IconColorPicker.
+// survives edits made through IconColorPicker. The `:key` above relies on
+// the same guarantee: sort()/add()/remove() never clone existing event
+// objects (only markSaved()/reset() do, and neither is called from here),
+// so Vue's Map-based, reference-equality key diffing (see
+// patchKeyedChildren/isSameVNodeType in @vue/runtime-core) keeps each
+// row's identity stable across a resort too. The `as unknown as PropertyKey`
+// cast is type-only -- values pass through unchanged at runtime -- and is
+// needed only because the `key` prop's own .d.ts type is `PropertyKey`,
+// narrower than what the diffing algorithm actually accepts.
 const expandedEvent = ref<AgendaEvent | null>(null);
 const expandedIndex = computed(() => (expandedEvent.value ? events.value.indexOf(expandedEvent.value) : -1));
 
@@ -87,13 +85,27 @@ const expandedIndex = computed(() => (expandedEvent.value ? events.value.indexOf
 defineExpose({ editor, expandedEvent, setExpandedEvent: (event: AgendaEvent | null) => (expandedEvent.value = event) });
 
 function addEvent() {
+  // Capture the newly-created event by reference before sorting: its index
+  // is only valid pre-sort, and re-reading events.value[index] afterwards
+  // could resolve to a different event once the array reorders.
   const index = editor.add();
-  expandedEvent.value = events.value[index];
+  const created = events.value[index];
+  editor.sort();
+  expandedEvent.value = created;
 }
 
 function confirmRemove(index: number) {
   if (window.confirm(`Delete "${events.value[index].title || 'this event'}"?`)) {
     editor.remove(index);
   }
+}
+
+// Sort before collapsing, not on every keystroke: resorting a row while
+// it's still expanded would yank it out from under whoever's editing it.
+// Waiting until "Done" lets the row visibly settle into its correct
+// position as the admin finishes, rather than while they're still typing.
+function finishEditing() {
+  editor.sort();
+  expandedEvent.value = null;
 }
 </script>

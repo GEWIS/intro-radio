@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -126,6 +127,10 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 	switch r.Method {
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "application/json")
+		// Admin edits must show up on the very next GET; without this, a
+		// browser or intermediary cache could keep serving a stale
+		// schedule after a PUT.
+		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(agenda.List())
 	case http.MethodPut:
 		var req AgendaPutRequest
@@ -211,7 +216,14 @@ func main() {
 	// ephemeral filesystem, which silently discards every edit on redeploy.
 	// That is invisible until someone notices their changes are gone, so
 	// make the resolved path and event count a first-deploy log line.
-	log.Info().Str("path", agendaFile).Int("events", len(agenda.List())).Msg("agenda loaded")
+	// filepath.Abs resolves the relative default against the working
+	// directory (WORKDIR /data in the container) so the logged path is the
+	// one that actually matters, not the literal env var value.
+	resolvedPath := agendaFile
+	if abs, err := filepath.Abs(agendaFile); err == nil {
+		resolvedPath = abs
+	}
+	log.Info().Str("path", resolvedPath).Int("events", len(agenda.List())).Msg("agenda loaded")
 
 	srv := newHTTPServer(port, newMux(chat, agenda))
 
