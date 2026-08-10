@@ -12,6 +12,7 @@ registerPlugins(app);
 const appStore = useAppStore();
 
 void appStore.fetchToken();
+void appStore.fetchAgenda();
 appStore.fetchRadioInfo().then(() => {
   app.mount('#app');
 });
