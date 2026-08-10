@@ -3,7 +3,7 @@
     <div class="mx-auto" style="max-width: 1400px">
       <div class="mb-6 text-center">
         <h1 class="text-h4 font-weight-bold gloria-hallelujah-regular">Backoffice</h1>
-        <div class="text-body-2 text-medium-emphasis">Manage active chats</div>
+        <div class="text-body-2 text-medium-emphasis mt-2">Manage active chats</div>
       </div>
 
       <v-card v-if="gate.stage.value === 'auth'" class="p-4" color="surface-variant" rounded="lg" variant="tonal">

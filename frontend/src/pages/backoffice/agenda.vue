@@ -1,12 +1,12 @@
 <template>
   <v-container class="py-8" fluid>
-    <div class="mx-auto" style="max-width: 900px">
-      <div class="mb-6 d-flex align-center justify-space-between">
-        <div>
-          <h1 class="text-h4 font-weight-bold gloria-hallelujah-regular">Agenda</h1>
-          <div class="text-body-2 text-medium-emphasis">Manage the radio schedule</div>
-        </div>
+    <div class="mx-auto" style="max-width: 1400px">
+      <div class="mb-6 text-center">
+        <h1 class="text-h4 font-weight-bold gloria-hallelujah-regular">Agenda</h1>
+        <div class="text-body-2 text-medium-emphasis mt-2">Manage the radio schedule</div>
+      </div>
 
+      <div class="d-flex justify-end mb-2">
         <router-link to="/backoffice">Back to chat</router-link>
       </div>
 

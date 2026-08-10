@@ -25,7 +25,11 @@
         </template>
       </v-card-item>
 
-      <v-card-text v-else>
+      <v-card-text v-if="expandedIndex !== index && event.subtitle" class="pt-0 text-body-2">
+        {{ event.subtitle }}
+      </v-card-text>
+
+      <v-card-text v-if="expandedIndex === index">
         <v-text-field v-model="event.title" density="compact" label="Title" />
         <v-text-field v-model="event.subtitle" density="compact" label="Subtitle" />
 
