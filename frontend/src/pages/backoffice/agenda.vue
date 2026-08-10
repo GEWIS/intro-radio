@@ -63,6 +63,7 @@
           block
           class="mt-4"
           color="primary"
+          :disabled="saving"
           :loading="saving"
           @click="save"
         >
