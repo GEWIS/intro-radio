@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -128,7 +129,8 @@ func TestAgendaReplaceRejectsWithoutMutatingState(t *testing.T) {
 }
 
 func TestAgendaConcurrentAccess(t *testing.T) {
-	a := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	path := filepath.Join(t.TempDir(), "agenda.json")
+	a := NewAgenda(path)
 	if err := a.Load(); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -136,16 +138,42 @@ func TestAgendaConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(2)
+		idx := i
 		go func() {
 			defer wg.Done()
 			_ = a.List()
 		}()
 		go func() {
 			defer wg.Done()
+			// Each goroutine writes a distinguishable payload with its index in the title
 			_ = a.Replace([]AgendaEvent{
-				{Title: "Event", Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"},
+				{Title: fmt.Sprintf("Event%d", idx), Subtitle: "sub", Icon: "mdi-star", IconColor: "blue", Color: "#FFFFFF", ColorDark: "#000000", Date: "2026-01-01", Time: "9:00 - 10:00"},
 			})
 		}()
 	}
 	wg.Wait()
+
+	// Verify that in-memory state matches what's on disk.
+	// This catches the race where they could diverge.
+	inMemory := a.List()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading agenda file after concurrent access: %v", err)
+	}
+	var onDisk []AgendaEvent
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		t.Fatalf("unmarshaling agenda file after concurrent access: %v", err)
+	}
+
+	if len(inMemory) != len(onDisk) {
+		t.Fatalf("state mismatch: in-memory has %d events, disk has %d events", len(inMemory), len(onDisk))
+	}
+	for i, mem := range inMemory {
+		disk := onDisk[i]
+		if mem.Title != disk.Title || mem.Subtitle != disk.Subtitle || mem.Icon != disk.Icon ||
+			mem.IconColor != disk.IconColor || mem.Color != disk.Color || mem.ColorDark != disk.ColorDark ||
+			mem.Date != disk.Date || mem.Time != disk.Time {
+			t.Fatalf("state mismatch at event %d: in-memory %+v, disk %+v", i, mem, disk)
+		}
+	}
 }

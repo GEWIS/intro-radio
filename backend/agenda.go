@@ -91,6 +91,11 @@ func (a *Agenda) List() []AgendaEvent {
 // in-memory and on-disk state exactly as they were -- the server never
 // ends up serving something that didn't actually persist.
 func (a *Agenda) Replace(events []AgendaEvent) error {
+	// Hold the write lock for the entire sequence to prevent concurrent
+	// calls from interfering with each other at the filesystem level.
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
 	for i, e := range events {
 		if err := validateAgendaEvent(e); err != nil {
 			return fmt.Errorf("event %d (%q): %w", i, e.Title, err)
@@ -116,9 +121,7 @@ func (a *Agenda) Replace(events []AgendaEvent) error {
 		return fmt.Errorf("saving agenda file: %w", err)
 	}
 
-	a.mutex.Lock()
 	a.events = events
-	a.mutex.Unlock()
 	return nil
 }
 
