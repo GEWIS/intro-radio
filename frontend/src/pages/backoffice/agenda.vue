@@ -99,6 +99,14 @@ async function save() {
   saving.value = true;
   saveError.value = '';
 
+  // The editor deliberately doesn't resort while a row is expanded (so the
+  // list doesn't reshuffle under whoever's typing), but the backend always
+  // returns events sorted -- so if a save changes the expanded event's date
+  // or time, the pre-save array order can already disagree with the order
+  // the response comes back in. Sort first so the position captured below
+  // matches the position markSaved() below will end up applying.
+  editorRef.value.editor.sort();
+
   // markSaved() below replaces every event with a freshly cloned object (see
   // its own comment for why), which would otherwise collapse whatever row is
   // expanded -- capture which one by position now, so it can be re-expanded
