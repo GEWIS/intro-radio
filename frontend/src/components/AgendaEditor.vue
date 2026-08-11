@@ -1,6 +1,12 @@
 <template>
   <div>
-    <v-card v-for="(event, index) in events" :key="event as unknown as PropertyKey" class="mb-2" variant="outlined">
+    <v-card
+      v-for="(event, index) in events"
+      :key="event as unknown as PropertyKey"
+      class="mb-2"
+      :style="index === expandedIndex ? { background: isDark ? event.colorDark : event.color } : undefined"
+      variant="outlined"
+    >
       <v-card-item v-if="expandedIndex !== index">
         <template #prepend>
           <v-icon :color="event.iconColor">{{ event.icon || 'mdi-help-circle-outline' }}</v-icon>
@@ -45,6 +51,7 @@ import type { AgendaEvent } from '@/stores/app';
 import { computed, ref } from 'vue';
 import IconColorPicker from '@/components/IconColorPicker.vue';
 import { useAgendaEditor } from '@/composables/useAgendaEditor';
+import { useDarkMode } from '@/composables/useDarkMode';
 
 const props = defineProps<{
   initial: AgendaEvent[];
@@ -52,6 +59,7 @@ const props = defineProps<{
 
 const editor = useAgendaEditor(props.initial);
 const { events } = editor;
+const { isDark } = useDarkMode();
 
 // Tracked by object identity, not array position. Events are distinct
 // objects, so holding the expanded one directly (instead of its index)
