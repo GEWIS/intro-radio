@@ -17,8 +17,16 @@
       <v-icon color="primary">{{ expanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
     </div>
 
-    <v-expand-transition>
-      <div v-if="expanded" class="mt-4">
+    <!-- A CSS grid track animates smoothly between 0fr and 1fr, which is how
+    this grows/shrinks with real height (pushing whatever's below it) without
+    needing v-expand-transition's JS-measured height, or any dependency on
+    Vuetify's own .expand-transition-* rules -- see the <style> block below
+    for why that dependency didn't actually animate anything. The content
+    stays mounted at all times (just clipped to ~0px via overflow: hidden
+    when collapsed) so there's no v-if mount/unmount step to coordinate with
+    the class-driven transition. -->
+    <div :aria-hidden="!expanded" class="schedule-panel" :class="{ 'schedule-panel--open': expanded }">
+      <div class="schedule-panel__inner">
         <div class="mb-4">Apart from playing the best music, we also have some quality segments for you to enjoy:</div>
 
         <template v-for="([date, ev], groupIdx) in groupedEvents" :key="date">
@@ -54,7 +62,7 @@
           </div>
         </template>
       </div>
-    </v-expand-transition>
+    </div>
   </v-card>
 </template>
 
@@ -145,18 +153,51 @@ function isCurrentEvent(event: AgendaEvent) {
   box-shadow: 0 0 0 2px #fff176;
 }
 
-/* v-expand-transition only animates height by default; layer a scale + fade
-   on top of it so opening/closing reads as the content growing into place
-   instead of a flat height slide. */
-.expand-transition-enter-active,
-.expand-transition-leave-active {
-  transition-property: height, transform, opacity !important;
-  transform-origin: top center;
+/* A single-row grid track transitions smoothly between 0fr and 1fr, which
+   is what actually makes this grow/shrink by real height (not just a
+   height snap) -- min-height: 0 on the grid item is required for the 0fr
+   state to collapse below its content's natural height at all, and
+   overflow: hidden on the grid container clips whatever hasn't animated
+   into view yet. Paired with a scale + fade on the inner content so it
+   reads as growing into place rather than a flat height slide. */
+.schedule-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.expand-transition-enter-from,
-.expand-transition-leave-to {
-  transform: scale(0.95);
+.schedule-panel--open {
+  grid-template-rows: 1fr;
+}
+
+.schedule-panel__inner {
+  /* No padding/margin here, even conditionally-zero ones: both are added on
+     top of whatever height min-height: 0 lets the content shrink to, so
+     *any* fixed top spacing on this element -- margin or padding -- puts a
+     permanent floor under the collapsed height that 0fr can never close.
+     The 16px gap only exists as padding-top once --open is added below, so
+     collapsed really is 0, not 16px of "collapsed" padding. */
+  min-height: 0;
   opacity: 0;
+  transform: scale(0.95);
+  transform-origin: top center;
+  transition:
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.schedule-panel--open .schedule-panel__inner {
+  padding-top: 16px;
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-panel,
+  .schedule-panel__inner {
+    transition: none;
+  }
 }
 </style>
