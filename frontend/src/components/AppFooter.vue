@@ -11,7 +11,7 @@
 
         <v-btn
           aria-label="View source on GitHub"
-          href="https://github.com/GEWIS/radioweb"
+          href="https://github.com/GEWIS/intro-radio"
           rel="noopener"
           size="small"
           target="_blank"
