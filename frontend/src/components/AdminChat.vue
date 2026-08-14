@@ -93,6 +93,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useChatNotifications } from '@/composables/useChatNotifications';
 import { useChatSocket } from '@/composables/useChatSocket';
 import { useGewisAuth } from '@/composables/useGewisAuth';
 
@@ -111,6 +112,7 @@ const props = defineProps<{
 }>();
 
 const { getToken } = useGewisAuth();
+const { notify } = useChatNotifications();
 
 const input = ref('');
 const messagesBox = ref<HTMLDivElement | null>(null);
@@ -198,6 +200,11 @@ const {
       if (activeUser.value !== chatId) {
         usersMap.value[chatId].unread = (usersMap.value[chatId].unread || 0) + 1;
       }
+    }
+
+    if (!isFromRadio) {
+      const senderName = `${msg.given_name ?? ''} ${msg.family_name ?? ''}`.trim();
+      notify(senderName || msg.from, msg.content);
     }
 
     if (!chats.value[chatId]) chats.value[chatId] = [];
