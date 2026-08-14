@@ -5,10 +5,10 @@ import AutoImport from 'unplugin-auto-import/vite';
 import Components from 'unplugin-vue-components/vite';
 import { VueRouterAutoImports } from 'unplugin-vue-router';
 import VueRouter from 'unplugin-vue-router/vite';
-// Utilities
-import { defineConfig } from 'vite';
 import Layouts from 'vite-plugin-vue-layouts-next';
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify';
+// Utilities
+import { defineConfig } from 'vitest/config';
 
 const PROXY_URL = 'http://localhost:8080';
 
@@ -86,6 +86,21 @@ export default defineConfig({
       },
       scss: {
         api: 'modern-compiler',
+      },
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    // Vitest skips its Vite-powered transform pipeline for node_modules by
+    // default, treating dependencies as already-built. Vuetify's own
+    // component files have side-effect CSS imports (e.g. VBtn.css) that
+    // only Vite's CSS plugin -- not Node's native ESM loader -- knows how
+    // to handle, so without this, mounting any real Vuetify component
+    // fails with "Unknown file extension .css" the moment a component
+    // test needs Vuetify to resolve for real.
+    server: {
+      deps: {
+        inline: ['vuetify'],
       },
     },
   },

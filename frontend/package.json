@@ -47,6 +47,7 @@
     "@typescript-eslint/parser": "^8.65.0",
     "@vitejs/plugin-vue": "^5.2.3",
     "@vue/compiler-sfc": "^3.5.17",
+    "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
     "eslint": "^9.39.5",
     "eslint-config-vuetify": "^4.7.2",
