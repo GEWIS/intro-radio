@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useChatNotifications } from '@/composables/useChatNotifications';
 import { useChatSocket } from '@/composables/useChatSocket';
 import { useGewisAuth } from '@/composables/useGewisAuth';
 
@@ -42,6 +43,7 @@ const messages = ref<{ from: string; content: string }[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
 
 const { getToken } = useGewisAuth();
+const { notify } = useChatNotifications();
 
 const { isClosed, connect, disconnect, send } = useChatSocket<Incoming>({
   path: '/ws?role=user',
@@ -49,6 +51,7 @@ const { isClosed, connect, disconnect, send } = useChatSocket<Incoming>({
   buildHandshake: (token) => ({ token }),
   onMessage: (msg) => {
     messages.value.push({ from: 'radio', content: msg.content });
+    notify('Radio', msg.content);
     scrollToBottom();
   },
 });
