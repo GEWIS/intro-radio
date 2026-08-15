@@ -12,6 +12,13 @@ WORKDIR /app
 COPY . .
 COPY --from=builder /app/node_modules ./node_modules
 
+# Baked in at build time so the running app can show exactly what's
+# deployed (see src/components/AppFooter.vue) -- there's no git history
+# inside the container to read this from at runtime. Defaults to "unknown"
+# so a build that doesn't pass --build-arg GIT_SHA (e.g. a local `docker
+# build` or the PR-validation build in ci.yml) still succeeds.
+ARG GIT_SHA=unknown
+ENV VITE_GIT_SHA=${GIT_SHA}
 ENV NODE_ENV=production
 RUN yarn build
 

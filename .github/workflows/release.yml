@@ -20,6 +20,11 @@ jobs:
       dockerfiles: '["frontend/Dockerfile"]'
       version: ${{ needs.versioning.outputs.next-version }}
       docker-paths: '["gewis/intro-radio/frontend"]'
+      # Baked into the built JS bundle -- see frontend/Dockerfile and
+      # src/components/AppFooter.vue -- so the deployed page can show
+      # exactly which commit is running.
+      build-args: |
+        GIT_SHA=${{ github.sha }}
 
   release-nginx:
     needs: versioning

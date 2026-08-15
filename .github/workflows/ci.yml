@@ -104,6 +104,11 @@ jobs:
     with:
       projects: '["frontend", "frontend/nginx", "backend"]'
       dockerfiles: '["frontend/Dockerfile", "frontend/nginx/Dockerfile", "backend/Dockerfile"]'
+      # Only frontend/Dockerfile declares this ARG; docker-build.yml applies
+      # build-args to every project in the matrix, and an unconsumed
+      # --build-arg is a silent no-op for the other two, so this is safe.
+      build-args: |
+        GIT_SHA=${{ github.sha }}
 
   # A reusable-workflow-call job posts its status under two different check names
   # depending on what happens: "build-and-lint-frontend / yarn-steps" if it actually runs,
