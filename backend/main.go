@@ -95,7 +95,18 @@ func radioHandler(w http.ResponseWriter, _ *http.Request) {
 // intentionally collapses "bad token", "bad lidnr", and "bad key" into the
 // same {"valid":false} response so a caller can't use this endpoint as an
 // oracle to work out which part of a guess was wrong.
-func radioKeyValidateHandler(chat *Chat, w http.ResponseWriter, r *http.Request) {
+//
+// On success, the claims are re-parsed via chat.verifyGEWISTokenHandshake
+// (rather than having VerifyRadioKey hand them back directly) purely to
+// avoid touching chat.go -- see audit.go's AuditLog for why that file is
+// off-limits here. A second cheap JWT parse is not a real cost at this
+// traffic scale. That re-parse cannot fail here: VerifyRadioKey has just
+// finished running the exact same parse over the same token successfully,
+// so an error on the second attempt would mean the token or secret changed
+// out from under this request between the two calls -- if it somehow ever
+// does happen, skipping the audit entry is the right call over crashing or
+// blocking the response on it.
+func radioKeyValidateHandler(chat *Chat, auditLog *AuditLog, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -113,6 +124,13 @@ func radioKeyValidateHandler(chat *Chat, w http.ResponseWriter, r *http.Request)
 		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
 		return
 	}
+
+	if claims, err := chat.verifyGEWISTokenHandshake(req.Token); err == nil {
+		auditLog.Record(claims.Lidnr, claims.GivenName, claims.FamilyName)
+	} else {
+		log.Warn().Err(err).Msg("radio key was valid but re-parsing the token for the audit log failed; skipping the audit entry")
+	}
+
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: true})
 }
@@ -168,17 +186,23 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 // newMux wires up all HTTP and WebSocket routes on a fresh ServeMux, rather
 // than registering on http.DefaultServeMux, so it can be constructed
 // independently in tests.
-func newMux(chat *Chat, agenda *Agenda) *http.ServeMux {
+func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLog) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", chat.HandleWS)
 	mux.HandleFunc("/api/v1/health", healthHandler)
 	mux.HandleFunc("/api/v1/token", tokenHandler)
 	mux.HandleFunc("/api/v1/radio", radioHandler)
 	mux.HandleFunc("/api/v1/radio-key/validate", func(w http.ResponseWriter, r *http.Request) {
-		radioKeyValidateHandler(chat, w, r)
+		radioKeyValidateHandler(chat, auditLog, w, r)
 	})
 	mux.HandleFunc("/api/v1/agenda", func(w http.ResponseWriter, r *http.Request) {
 		agendaHandler(chat, agenda, w, r)
+	})
+	mux.HandleFunc("/api/v1/metrics", func(w http.ResponseWriter, r *http.Request) {
+		metricsHandler(chat, metrics, w, r)
+	})
+	mux.HandleFunc("/api/v1/audit-log", func(w http.ResponseWriter, r *http.Request) {
+		auditLogHandler(chat, auditLog, w, r)
 	})
 	return mux
 }
@@ -225,7 +249,27 @@ func main() {
 	}
 	log.Info().Str("path", resolvedPath).Int("events", len(agenda.List())).Msg("agenda loaded")
 
-	srv := newHTTPServer(port, newMux(chat, agenda))
+	// Unlike agenda.Load(), a metrics/audit-log load failure is not fatal:
+	// both files are supplementary history for the backoffice dashboard,
+	// not the primary content this server exists to serve, so a corrupt
+	// file just means starting that one series empty rather than refusing
+	// to boot.
+	metrics := NewMetricsStore(metricsFile)
+	if err := metrics.Load(); err != nil {
+		log.Warn().Err(err).Str("path", metricsFile).Msg("could not load metrics history; starting with an empty series")
+	}
+	auditLog := NewAuditLog(auditLogFile)
+	if err := auditLog.Load(); err != nil {
+		log.Warn().Err(err).Str("path", auditLogFile).Msg("could not load audit log; starting with an empty log")
+	}
+
+	srv := newHTTPServer(port, newMux(chat, agenda, metrics, auditLog))
+
+	// metricsDone stops MetricsStore.Run's ticker loop; it is closed
+	// alongside chat.Shutdown() below so the sampling goroutine doesn't
+	// outlive the rest of a graceful shutdown.
+	metricsDone := make(chan struct{})
+	go metrics.Run(chat, metricsDone)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -255,5 +299,6 @@ func main() {
 		// /ws clients) -- close those explicitly so deploys don't just
 		// vanish on connected clients.
 		chat.Shutdown()
+		close(metricsDone)
 	}
 }

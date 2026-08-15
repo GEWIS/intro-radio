@@ -4,6 +4,8 @@
 .worktrees/
 .superpowers/
 agenda.json
+metrics.json
+audit-log.json
 /backend/radiogaga
 /backend/coverage.out
 /backend/coverage-report.md

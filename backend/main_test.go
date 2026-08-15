@@ -22,8 +22,10 @@ func TestServerTimeoutsDoNotKillWebSocket(t *testing.T) {
 	RADIOChatKey = "ChangeMe"
 	chat := NewChat()
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
+	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
 
-	ts := httptest.NewUnstartedServer(newMux(chat, agenda))
+	ts := httptest.NewUnstartedServer(newMux(chat, agenda, metrics, auditLog))
 	ts.Config.ReadHeaderTimeout = 50 * time.Millisecond
 	ts.Config.ReadTimeout = 50 * time.Millisecond
 	ts.Config.WriteTimeout = 50 * time.Millisecond
@@ -128,6 +130,7 @@ func TestRadioKeyValidateHandler(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "correct-key"
 	chat := NewChat()
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
 
 	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
 	zeroLidnrTok := makeToken(t, GEWISSecret, 0, "Nobody", "User", time.Minute)
@@ -154,7 +157,7 @@ func TestRadioKeyValidateHandler(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/radio-key/validate", strings.NewReader(string(body)))
 			rec := httptest.NewRecorder()
 
-			radioKeyValidateHandler(chat, rec, req)
+			radioKeyValidateHandler(chat, auditLog, rec, req)
 
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("expected status %d, got %d (body=%s)", tt.wantStatus, rec.Code, rec.Body.String())
@@ -175,12 +178,13 @@ func TestRadioKeyValidateHandler(t *testing.T) {
 
 func TestRadioKeyValidateHandlerWrongMethod(t *testing.T) {
 	chat := NewChat()
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
 
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
 		req := httptest.NewRequest(method, "/api/v1/radio-key/validate", nil)
 		rec := httptest.NewRecorder()
 
-		radioKeyValidateHandler(chat, rec, req)
+		radioKeyValidateHandler(chat, auditLog, rec, req)
 
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("%s: expected status 405, got %d", method, rec.Code)
@@ -190,11 +194,12 @@ func TestRadioKeyValidateHandlerWrongMethod(t *testing.T) {
 
 func TestRadioKeyValidateHandlerMalformedJSON(t *testing.T) {
 	chat := NewChat()
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/radio-key/validate", strings.NewReader("not json"))
 	rec := httptest.NewRecorder()
 
-	radioKeyValidateHandler(chat, rec, req)
+	radioKeyValidateHandler(chat, auditLog, rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
@@ -206,7 +211,9 @@ func TestRadioKeyValidateRouteRegistered(t *testing.T) {
 	RADIOChatKey = "correct-key"
 	chat := NewChat()
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
-	mux := newMux(chat, agenda)
+	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
+	mux := newMux(chat, agenda, metrics, auditLog)
 
 	tok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
 	body, err := json.Marshal(RadioKeyValidateRequest{Token: tok, RadioKey: "correct-key"})
@@ -398,7 +405,9 @@ func TestAgendaHandlerMalformedJSON(t *testing.T) {
 func TestNewMuxRoutesRegistered(t *testing.T) {
 	chat := NewChat()
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
-	mux := newMux(chat, agenda)
+	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
+	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
+	mux := newMux(chat, agenda, metrics, auditLog)
 
 	for _, path := range []string{"/api/v1/health", "/api/v1/token", "/api/v1/radio", "/api/v1/agenda"} {
 		rec := httptest.NewRecorder()
