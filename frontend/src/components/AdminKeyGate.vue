@@ -1,5 +1,5 @@
 <template>
-  <v-card v-if="gate.stage.value === 'auth'" class="p-4" color="surface-variant" rounded="lg" variant="tonal">
+  <v-card v-if="gate.stage.value === 'auth'" class="pa-4" color="surface-variant" rounded="lg" variant="tonal">
     <v-skeleton-loader type="paragraph, actions" />
   </v-card>
 
