@@ -13,8 +13,13 @@ export function mountWithVuetify<T>(component: T, options: ComponentMountingOpti
   return mount(component, {
     ...options,
     global: {
-      plugins: [vuetify, ...(options.global?.plugins ?? [])],
       ...options.global,
+      // Spreading options.global first, then overriding plugins here (rather
+      // than the other way around), is deliberate: options.global.plugins --
+      // if the caller passed one -- would otherwise silently win over (and
+      // drop) vuetify entirely, since object spread doesn't merge arrays, it
+      // just keeps whichever same-named key comes last.
+      plugins: [vuetify, ...(options.global?.plugins ?? [])],
     },
   });
 }

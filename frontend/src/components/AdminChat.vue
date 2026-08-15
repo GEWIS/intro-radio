@@ -34,7 +34,7 @@
               <span class="ml-2">{{ activeUserTitle }}</span>
             </div>
 
-            <v-btn :loading="connecting" size="small" variant="text" @click="connect">Reconnect</v-btn>
+            <v-btn :loading="connecting" size="small" variant="text" @click="chatStore.connect">Reconnect</v-btn>
           </v-card-title>
 
           <v-divider />
@@ -92,44 +92,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useChatNotifications } from '@/composables/useChatNotifications';
-import { useChatSocket } from '@/composables/useChatSocket';
-import { useGewisAuth } from '@/composables/useGewisAuth';
+import { storeToRefs } from 'pinia';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useChatStore } from '@/stores/chat';
 
-type Outgoing = {
-  from: string;
-  to?: string;
-  content: string;
-  given_name?: string;
-  family_name?: string;
-};
-type ChatUser = { id: string; givenName: string; familyName: string; unread: number; lastActivity: number };
-type ChatMessage = Outgoing & { ts: number };
+type ChatMessage = { from: string; to?: string; content: string; given_name?: string; family_name?: string; ts: number };
 
 const props = defineProps<{
   radioKey: string;
 }>();
 
-const { getToken } = useGewisAuth();
-const { notify } = useChatNotifications();
+const chatStore = useChatStore();
+const { isClosed, connecting, users, activeUser, usersMap, chats } = storeToRefs(chatStore);
 
 const input = ref('');
 const messagesBox = ref<HTMLDivElement | null>(null);
 
-const chats = ref<Record<string, ChatMessage[]>>({});
-const usersMap = ref<Record<string, ChatUser>>({});
-
-const users = computed<ChatUser[]>(() =>
-  Object.values(usersMap.value).toSorted((a, b) => {
-    if (b.lastActivity !== a.lastActivity) return b.lastActivity - a.lastActivity;
-    const an = `${a.givenName} ${a.familyName}`.trim();
-    const bn = `${b.givenName} ${b.familyName}`.trim();
-    return an.localeCompare(bn);
-  }),
-);
-
-const activeUser = ref<string | null>(null);
 const activeMessages = computed(() => (activeUser.value ? chats.value[activeUser.value] || [] : []));
 const activeUserTitle = computed(() => {
   if (!activeUser.value) return '(select user)';
@@ -149,10 +127,11 @@ function formatTime(ts?: number) {
   return d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' });
 }
 
-// 'you' is our own sentinel for the optimistic local echo in send() below --
-// never a real lidnr. A `to` on any other message means it's a radio-to-
-// radio mirror (listener-authored messages never carry `to`), so we can
-// tell those apart from the listener's own messages without a separate flag.
+// 'you' is our own sentinel for the optimistic local echo in the store's
+// send() -- never a real lidnr. A `to` on any other message means it's a
+// radio-to-radio mirror (listener-authored messages never carry `to`), so
+// we can tell those apart from the listener's own messages without a
+// separate flag.
 function messageLabel(m: ChatMessage): string {
   if (m.from === 'you') return 'You';
   if (m.to) return m.given_name || m.family_name || 'Radio';
@@ -165,85 +144,24 @@ function scrollToBottom() {
   });
 }
 
-function touchUser(id: string, given?: string, family?: string) {
-  const now = Date.now();
-  const existing = usersMap.value[id];
-  usersMap.value[id] = {
-    id,
-    givenName: given ?? existing?.givenName ?? '',
-    familyName: family ?? existing?.familyName ?? '',
-    unread: existing?.unread ?? 0,
-    lastActivity: now,
-  };
-}
-
 function selectUser(id: string) {
-  activeUser.value = id;
-  if (usersMap.value[id]) usersMap.value[id].unread = 0;
-  scrollToBottom();
+  chatStore.selectUser(id);
 }
-
-const {
-  isClosed,
-  connecting,
-  connect,
-  disconnect,
-  send: sendRaw,
-} = useChatSocket<Outgoing>({
-  path: '/ws?role=radio',
-  getToken: () => getToken(),
-  buildHandshake: (token) => ({ token, radioKey: props.radioKey }),
-  onMessage: (msg) => {
-    // If there is a "to", it was sent by a radio and mirrored to us
-    const isFromRadio = Boolean(msg.to && msg.to.length > 0);
-    const chatId = isFromRadio ? (msg.to as string) : msg.from;
-
-    // Maintain user activity for the chat thread
-    if (chatId && chatId !== 'radio') {
-      // We only have names when the user writes to us
-      if (isFromRadio) {
-        touchUser(chatId);
-      } else {
-        touchUser(chatId, msg.given_name, msg.family_name);
-      }
-      if (activeUser.value !== chatId) {
-        usersMap.value[chatId].unread = (usersMap.value[chatId].unread || 0) + 1;
-      }
-    }
-
-    if (!isFromRadio) {
-      const senderName = `${msg.given_name ?? ''} ${msg.family_name ?? ''}`.trim();
-      notify(senderName || msg.from, msg.content);
-    }
-
-    if (!chats.value[chatId]) chats.value[chatId] = [];
-    chats.value[chatId].push({ ...msg, ts: Date.now() });
-
-    if (!activeUser.value && chatId && chatId !== 'radio') {
-      activeUser.value = chatId;
-      usersMap.value[chatId].unread = 0;
-    }
-
-    scrollToBottom();
-  },
-});
 
 function send() {
   if (isClosed.value || !activeUser.value) return;
   const content = input.value.trim();
   if (!content) return;
+  if (!chatStore.send(content)) return;
 
-  const to = activeUser.value;
-  if (!sendRaw({ to, content })) return;
-
-  if (!chats.value[to]) chats.value[to] = [];
-  chats.value[to].push({ from: 'you', to, content, ts: Date.now() });
-
-  touchUser(to);
   input.value = '';
-  scrollToBottom();
 }
 
-onMounted(connect);
-onBeforeUnmount(disconnect);
+// Covers every way activeMessages can change -- a new message arriving over
+// the socket (including while a different backoffice page had it open),
+// send()'s own local echo, and switching to a different user's thread --
+// without each of those call sites needing its own explicit scroll call.
+watch(activeMessages, scrollToBottom, { flush: 'post' });
+
+onMounted(() => chatStore.ensureConnected(props.radioKey));
 </script>

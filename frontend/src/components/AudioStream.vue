@@ -48,7 +48,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, toRef, watch } from 'vue';
+import { findMatchingSource, useIcecastLiveStatus } from '@/composables/useIcecastLiveStatus';
 
 const props = defineProps<{
   baseUrl: string;
@@ -59,16 +60,8 @@ const emit = defineEmits<{
   (e: 'update:is-live', value: boolean): void;
 }>();
 
-// The backend's default RADIO_AUDIO_URL has no scheme (e.g. "bata-radio.snt.utwente.nl"),
-// which makes the <audio> src resolve as a same-origin relative path instead of an
-// absolute stream URL. Default to https:// when no scheme is present.
-const SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
-const normalizedBaseUrl = computed(() => {
-  const trimmed = props.baseUrl.replace(/\/$/, '');
-  return SCHEME_PATTERN.test(trimmed) ? trimmed : `https://${trimmed}`;
-});
+const { isLive, normalizedBaseUrl, statusUrl } = useIcecastLiveStatus(toRef(props, 'baseUrl'), toRef(props, 'mountPoint'));
 const streamUrl = computed(() => `${normalizedBaseUrl.value}${props.mountPoint}`);
-const statusUrl = computed(() => `${normalizedBaseUrl.value}/status-json.xsl`);
 
 // Gating this on isLive too (not just nativeSupported) matters: setting src at
 // all makes the browser start loading it immediately, and a dead mount point
@@ -78,7 +71,6 @@ const statusUrl = computed(() => `${normalizedBaseUrl.value}/status-json.xsl`);
 const audio = ref<HTMLAudioElement | null>(null);
 const isPlaying = ref(false);
 const nativeSupported = true; // Assume browser can play AAC
-const isLive = ref(false);
 const currentlyPlaying = ref<string | null>(null);
 const listeners = ref<number | null>(null);
 const showListeners = ref(false);
@@ -86,37 +78,12 @@ const hasError = ref(false);
 const errorMessage = ref<string | null>(null);
 let statsInterval: number | null = null;
 let switchInterval: number | null = null;
-let liveInterval: number | null = null;
 
 const promptText = computed(() => {
   if (isPlaying.value) return 'Stop listening';
   if (!isLive.value) return 'Radio is currently offline';
   return 'Click to start listening!';
 });
-
-function findMatchingSource(data: any, mountPoint: string) {
-  const sources = data?.icestats?.source;
-  if (Array.isArray(sources)) {
-    return sources.find((s: any) => s.listenurl?.endsWith(mountPoint)) ?? null;
-  }
-  if (sources && sources.listenurl?.endsWith(mountPoint)) {
-    return sources;
-  }
-  return null;
-}
-
-// Independent of play/pause -- this is what decides whether the prompt above
-// invites a click at all, so it has to run continuously from mount, not just
-// while something is already playing.
-async function checkLive() {
-  try {
-    const res = await fetch(statusUrl.value);
-    const data = await res.json();
-    isLive.value = findMatchingSource(data, props.mountPoint) !== null;
-  } catch {
-    isLive.value = false;
-  }
-}
 
 async function fetchCurrentlyPlaying() {
   try {
@@ -185,13 +152,5 @@ function toggle() {
 
 watch(isLive, (value) => emit('update:is-live', value), { immediate: true });
 
-onMounted(() => {
-  checkLive();
-  liveInterval = setInterval(checkLive, 15_000);
-});
-
-onUnmounted(() => {
-  if (liveInterval !== null) clearInterval(liveInterval);
-  clearPlaybackTimers();
-});
+onUnmounted(clearPlaybackTimers);
 </script>
