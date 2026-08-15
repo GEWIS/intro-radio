@@ -2,7 +2,7 @@
   <div>
     <audio
       ref="audio"
-      :src="nativeSupported ? streamUrl : undefined"
+      :src="nativeSupported && isLive ? streamUrl : undefined"
       style="display: none"
       @error="handleStreamError"
     />
@@ -70,6 +70,11 @@ const normalizedBaseUrl = computed(() => {
 const streamUrl = computed(() => `${normalizedBaseUrl.value}${props.mountPoint}`);
 const statusUrl = computed(() => `${normalizedBaseUrl.value}/status-json.xsl`);
 
+// Gating this on isLive too (not just nativeSupported) matters: setting src at
+// all makes the browser start loading it immediately, and a dead mount point
+// 404s -- firing the same error handler play() itself uses. Without the gate,
+// a genuinely offline radio showed both the offline message and "something
+// went wrong", which looked like a second, unrelated failure.
 const audio = ref<HTMLAudioElement | null>(null);
 const isPlaying = ref(false);
 const nativeSupported = true; // Assume browser can play AAC

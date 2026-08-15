@@ -48,6 +48,9 @@ describe('AudioStream', () => {
   });
 
   it('leaves an explicit scheme alone (no double https://) and strips a trailing slash from baseUrl', async () => {
+    // Must match the mount point checkLive() reports live, or the new
+    // isLive-gated src binding leaves src unset regardless of URL-building.
+    fetchMock.mockResolvedValue({ json: async () => statusJsonFor('/low') });
     const wrapper = await mountAudioStream({ baseUrl: 'https://example.com/', mountPoint: '/low' });
 
     expect(wrapper.find('audio').attributes('src')).toBe('https://example.com/low');
@@ -94,6 +97,17 @@ describe('AudioStream', () => {
     const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     expect(wrapper.text()).toContain('Radio is currently offline');
+  });
+
+  it('does not set the audio src while offline, so a dead mount point never fires a spurious error', async () => {
+    fetchMock.mockResolvedValue({
+      json: async () => ({ icestats: { source: { listenurl: 'https://example.com/low', title: 'Other' } } }),
+    });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    expect(wrapper.find('audio').attributes('src')).toBeUndefined();
+    expect(wrapper.text()).toContain('Radio is currently offline');
+    expect(wrapper.text()).not.toContain('Something went wrong playing the stream');
   });
 
   it('does not start playback on click while not live', async () => {
