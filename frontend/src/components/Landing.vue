@@ -88,11 +88,14 @@
             variant="tonal"
           >
             <template #prepend>
-              <div v-if="link.image" class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+              <div
+                v-if="link.image"
+                class="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center px-1"
+              >
                 <v-img :alt="link.imageAlt" class="object-cover" height="32" :src="link.image" width="32" />
               </div>
 
-              <v-icon v-else :icon="link.icon" />
+              <v-icon v-else class="px-5" :icon="link.icon" />
             </template>
           </v-card>
         </v-col>
