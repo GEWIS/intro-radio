@@ -21,14 +21,33 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import AdminChat from '@/components/AdminChat.vue';
 import AdminKeyGate from '@/components/AdminKeyGate.vue';
 import { useAdminGate } from '@/composables/useAdminGate';
+import { useChatStore } from '@/stores/chat';
 
 const gate = useAdminGate();
+const route = useRoute();
+const chatStore = useChatStore();
 
 onMounted(() => {
   gate.init();
 });
+
+// Lets the dashboard's audit-log link straight into a specific person's
+// thread (?user=<lidnr>) instead of just dropping the admin on the chat page
+// to go find them manually. Selecting someone with no messages yet is fine
+// -- AdminChat renders an empty thread and lets staff message them first.
+// Watches gate.stage too, not just the query param: the query param is
+// already set on first navigation, before init() resolves it to 'ready', so
+// only watching the param would miss firing once the gate actually opens.
+watch(
+  [() => route.query.user, gate.stage],
+  ([user, stage]) => {
+    if (typeof user === 'string' && stage === 'ready') chatStore.selectUser(user);
+  },
+  { immediate: true },
+);
 </script>

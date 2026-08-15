@@ -21,125 +21,210 @@
         </div>
       </v-alert>
 
-      <v-card v-else class="pa-2" color="surface-variant" rounded="lg" variant="tonal">
-        <!-- First load: keep the skeleton inside the same card frame rather
-             than swapping cards in and out once data arrives. -->
-        <v-skeleton-loader v-if="loading" type="paragraph, image, list-item-three-line@4" />
+      <template v-else>
+        <!-- Right-now status: audio/video health and live counts. Independent
+        of the Metrics card below (which is historical and skeleton-gated) --
+        these have their own quieter loading state so a slow initial metrics
+        fetch doesn't hold up what's otherwise available immediately. -->
+        <v-card class="pa-2 mb-4" color="surface-variant" rounded="lg" variant="tonal">
+          <div class="pa-2 d-flex flex-wrap align-center ga-6">
+            <v-chip :color="audioLive ? 'success' : 'error'" prepend-icon="mdi-radio-tower" variant="flat">
+              Audio: {{ audioLive ? 'Live' : 'Offline' }}
+            </v-chip>
 
-        <template v-else>
-          <v-card-title class="pa-2">Metrics</v-card-title>
-          <v-divider />
+            <v-chip :color="videoHealthy ? 'success' : 'error'" prepend-icon="mdi-video" variant="flat">
+              Video: {{ videoHealthy ? 'Live' : 'Stalled' }}
+            </v-chip>
 
-          <div class="pa-2">
-            <div v-if="metrics.length === 0" class="text-body-2 text-medium-emphasis">No metrics recorded yet.</div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Listening now</div>
+              <div class="text-h5">{{ liveStatus?.listeners ?? '—' }}</div>
+            </div>
 
-            <div v-else class="d-flex flex-column ga-4">
-              <div v-for="series in metricSeries" :key="series.label">
-                <div class="text-caption text-medium-emphasis mb-1">{{ series.label }}</div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Chatting now</div>
+              <div class="text-h5">{{ liveStatus?.chatters ?? '—' }}</div>
+            </div>
 
-                <!-- The axis-label column and the tick-label spacer below it
-                     share the same fixed width so the tick row -- shared by
-                     both series, since they plot the same timestamps -- lines
-                     up with the sparkline's own horizontal extent. VSparkline
-                     has no built-in axis, so this is a hand-rolled min/max
-                     readout rather than real gridlines. -->
-                <div class="d-flex align-center ga-3">
-                  <div
-                    class="d-flex flex-column justify-space-between text-caption text-medium-emphasis"
-                    style="width: 32px; height: 60px; text-align: right"
-                  >
-                    <span>{{ series.max }}</span>
-                    <span>{{ series.min }}</span>
+            <div v-if="currentSegment">
+              <div class="text-caption text-medium-emphasis">Currently scheduled</div>
+              <div class="text-h6">{{ currentSegment.title }}</div>
+            </div>
+
+            <router-link v-if="chatStore.totalUnread > 0" class="text-error font-weight-bold" to="/backoffice">
+              {{ chatStore.totalUnread }} unread {{ chatStore.totalUnread === 1 ? 'conversation' : 'conversations' }}
+            </router-link>
+          </div>
+        </v-card>
+
+        <v-card class="pa-2" color="surface-variant" rounded="lg" variant="tonal">
+          <!-- First load: keep the skeleton inside the same card frame rather
+               than swapping cards in and out once data arrives. -->
+          <v-skeleton-loader v-if="loading" type="paragraph, image, list-item-three-line@4" />
+
+          <template v-else>
+            <v-card-title class="pa-2">Metrics</v-card-title>
+            <v-divider />
+
+            <div class="pa-2">
+              <div v-if="metrics.length === 0" class="text-body-2 text-medium-emphasis">No metrics recorded yet.</div>
+
+              <div v-else class="d-flex flex-column ga-4">
+                <div v-for="series in metricSeries" :key="series.label">
+                  <div class="text-caption text-medium-emphasis mb-1 d-flex justify-space-between">
+                    <span>{{ series.label }}</span>
+                    <span v-if="series.peak">Peak: {{ series.peak.value }} ({{ formatTimestamp(series.peak.timestamp) }})</span>
                   </div>
 
-                  <VSparkline
-                    class="flex-grow-1"
-                    :color="series.color"
-                    height="60"
-                    line-width="2"
-                    :model-value="series.values"
-                    padding="8"
-                    smooth
-                  />
-                </div>
-              </div>
+                  <!-- The axis-label column and the tick-label spacer below it
+                       share the same fixed width so the tick row -- shared by
+                       both series, since they plot the same timestamps -- lines
+                       up with the sparkline's own horizontal extent. VSparkline
+                       has no built-in axis, so this is a hand-rolled min/max
+                       readout rather than real gridlines. -->
+                  <div class="d-flex align-center ga-3">
+                    <div
+                      class="d-flex flex-column justify-space-between text-caption text-medium-emphasis"
+                      style="width: 32px; height: 60px; text-align: right"
+                    >
+                      <span>{{ series.max }}</span>
+                      <span>{{ series.min }}</span>
+                    </div>
 
-              <div class="d-flex ga-3">
-                <div style="width: 32px"></div>
-
-                <div class="flex-grow-1 d-flex justify-space-between text-caption text-medium-emphasis">
-                  <span v-for="(tick, i) in metricTicks" :key="i">{{ tick }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <v-divider class="my-2" />
-
-          <v-card-title class="pa-2">Audit log</v-card-title>
-          <v-divider />
-
-          <div class="pa-2">
-            <div v-if="auditLog.length === 0" class="text-body-2 text-medium-emphasis">No audit log entries yet.</div>
-
-            <div v-else class="overflow-y-auto" style="max-height: 40vh">
-              <div v-for="(entry, i) in auditLog" :key="i" class="my-1 d-flex">
-                <!-- Fixed-width timestamp column, same layout AdminChat.vue uses
-                     for its message rows -- but wider, since these timestamps
-                     carry a date too (this log can span multiple days, unlike
-                     the always-today live chat). -->
-                <div class="text-caption font-mono mr-2" style="width: 110px; text-align: right">
-                  {{ formatTimestamp(entry.timestamp) }}
+                    <VSparkline
+                      class="flex-grow-1"
+                      :color="series.color"
+                      height="60"
+                      line-width="2"
+                      :model-value="series.values"
+                      padding="8"
+                      smooth
+                    />
+                  </div>
                 </div>
 
-                <v-divider class="mx-3" style="align-self: stretch" :thickness="2" vertical />
+                <div class="d-flex ga-3">
+                  <div style="width: 32px"></div>
 
-                <div class="flex-grow-1">
-                  <strong>{{ entry.given_name }} {{ entry.family_name }}</strong>
-                  <span class="text-medium-emphasis ml-1">(m{{ entry.lidnr }})</span>
+                  <div class="flex-grow-1 d-flex justify-space-between text-caption text-medium-emphasis">
+                    <span v-for="(tick, i) in metricTicks" :key="i">{{ tick }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </template>
-      </v-card>
+
+            <v-divider class="my-2" />
+
+            <v-card-title class="pa-2">Audit log</v-card-title>
+            <v-divider />
+
+            <div class="pa-2">
+              <div v-if="auditLog.length === 0" class="text-body-2 text-medium-emphasis">No audit log entries yet.</div>
+
+              <div v-else class="overflow-y-auto" style="max-height: 40vh">
+                <template v-for="(group, groupIdx) in groupedAuditLog" :key="group.day">
+                  <div v-if="groupIdx > 0" class="my-3">
+                    <v-divider />
+                  </div>
+
+                  <div class="text-caption font-weight-bold mb-1 d-flex justify-space-between">
+                    <span>{{ formatDay(group.day) }}</span>
+
+                    <span class="text-medium-emphasis font-weight-regular">
+                      {{ group.uniqueStaff }} {{ group.uniqueStaff === 1 ? 'staff member' : 'staff members' }}
+                    </span>
+                  </div>
+
+                  <div v-for="(entry, i) in group.entries" :key="i" class="my-1 d-flex">
+                    <!-- Fixed-width timestamp column, same layout AdminChat.vue uses
+                         for its message rows -- but wider, since these timestamps
+                         carry a date too (this log can span multiple days, unlike
+                         the always-today live chat). -->
+                    <div class="text-caption font-mono mr-2" style="width: 110px; text-align: right">
+                      {{ formatTimestamp(entry.timestamp) }}
+                    </div>
+
+                    <v-divider class="mx-3" style="align-self: stretch" :thickness="2" vertical />
+
+                    <div class="flex-grow-1">
+                      <router-link :to="`/backoffice?user=${entry.lidnr}`">
+                        <strong>{{ entry.given_name }} {{ entry.family_name }}</strong>
+                        <span class="text-medium-emphasis ml-1">(m{{ entry.lidnr }})</span>
+                      </router-link>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </v-card>
+      </template>
     </div>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import AdminKeyGate from '@/components/AdminKeyGate.vue';
 import { useAdminGate } from '@/composables/useAdminGate';
+import { currentAgendaEvent } from '@/composables/useAgendaTiming';
+import { useIcecastLiveStatus } from '@/composables/useIcecastLiveStatus';
+import { useVideoHealth } from '@/composables/useVideoHealth';
+import { useAppStore } from '@/stores/app';
+import { useChatStore } from '@/stores/chat';
 
 type MetricPoint = { timestamp: string; listeners: number; chatters: number };
 type AuditEntry = { timestamp: string; lidnr: number; given_name: string; family_name: string };
+type LiveStatus = { listeners: number | null; chatters: number };
 
-const gate = useAdminGate();
-
-const loading = ref(false);
-const loadError = ref(false);
-const metrics = ref<MetricPoint[]>([]);
-const auditLog = ref<AuditEntry[]>([]);
-
+// Refreshing metrics/the audit log faster than this would just refetch the
+// same data -- the backend only samples every 5 minutes (see
+// backend/metrics.go's metricsSampleInterval).
+const METRICS_REFRESH_MS = 5 * 60_000;
+// Live status (and the "now" used for the current-segment indicator) is
+// worth refreshing much more often, since unlike the sampled history it
+// reflects the current instant, not a stored point.
+const LIVE_REFRESH_MS = 15_000;
 // Number of tick labels shown under the charts -- shared by both series
 // since they're sampled at the same timestamps, so there's no need to
 // duplicate the row under each sparkline.
 const TICK_COUNT = 5;
 
-function buildSeries(label: string, color: string, values: number[]) {
+const gate = useAdminGate();
+const { radio, agenda } = storeToRefs(useAppStore());
+const chatStore = useChatStore();
+
+const loading = ref(false);
+const loadError = ref(false);
+const metrics = ref<MetricPoint[]>([]);
+const auditLog = ref<AuditEntry[]>([]);
+const liveStatus = ref<LiveStatus | null>(null);
+const now = ref(new Date());
+
+let metricsInterval: number | null = null;
+let liveInterval: number | null = null;
+
+function peakOf(key: 'listeners' | 'chatters') {
+  if (metrics.value.length === 0) return null;
+  const peak = metrics.value.reduce((max, m) => (m[key] > max[key] ? m : max));
+  return { value: peak[key], timestamp: peak.timestamp };
+}
+
+function buildSeries(label: string, color: string, values: number[], key: 'listeners' | 'chatters') {
   return {
     label,
     color,
     values,
     max: values.length > 0 ? Math.max(...values) : 0,
     min: values.length > 0 ? Math.min(...values) : 0,
+    peak: peakOf(key),
   };
 }
 
 const metricSeries = computed(() => [
-  buildSeries('Listeners', 'primary', metrics.value.map((m) => m.listeners)),
-  buildSeries('Chatters', 'accent', metrics.value.map((m) => m.chatters)),
+  buildSeries('Listeners', 'primary', metrics.value.map((m) => m.listeners), 'listeners'),
+  buildSeries('Chatters', 'accent', metrics.value.map((m) => m.chatters), 'chatters'),
 ]);
 
 // Evenly spaced-by-index tick labels rather than time-scaled ones --
@@ -156,8 +241,7 @@ const metricTicks = computed(() => {
   const sameDay = new Date(points[0].timestamp).toDateString() === new Date(points[n - 1].timestamp).toDateString();
 
   const count = Math.min(TICK_COUNT, n);
-  const indices =
-    count === 1 ? [0] : Array.from({ length: count }, (_, i) => Math.round((i * (n - 1)) / (count - 1)));
+  const indices = count === 1 ? [0] : Array.from({ length: count }, (_, i) => Math.round((i * (n - 1)) / (count - 1)));
 
   return [...new Set(indices)].map((i) => formatTick(points[i].timestamp, sameDay));
 });
@@ -168,9 +252,38 @@ function formatTick(iso: string, timeOnly: boolean) {
   return timeOnly ? time : `${d.toLocaleDateString(['nl-NL'])} ${time}`;
 }
 
+const currentSegment = computed(() => currentAgendaEvent(agenda.value, now.value));
+
+type AuditGroup = { day: string; entries: AuditEntry[]; uniqueStaff: number };
+
+// auditLog is already newest-first (see backend/audit.go's AuditLog.List),
+// so grouping by day while preserving encounter order naturally keeps the
+// most recent day first too -- Map iteration order follows insertion order.
+const groupedAuditLog = computed<AuditGroup[]>(() => {
+  const groups = new Map<string, AuditEntry[]>();
+  for (const entry of auditLog.value) {
+    const day = entry.timestamp.slice(0, 10); // the "YYYY-MM-DD" prefix of the ISO timestamp
+    if (!groups.has(day)) groups.set(day, []);
+    groups.get(day)!.push(entry);
+  }
+  return Array.from(groups.entries()).map(([day, entries]) => ({
+    day,
+    entries,
+    uniqueStaff: new Set(entries.map((e) => e.lidnr)).size,
+  }));
+});
+
+function formatDay(day: string) {
+  return new Date(day).toLocaleDateString(['nl-NL'], { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
 function formatTimestamp(iso: string) {
   const d = new Date(iso);
   return `${d.toLocaleDateString(['nl-NL'])} ${d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function authBody() {
+  return JSON.stringify({ token: gate.token.value, radioKey: gate.radioKey.value });
 }
 
 async function load() {
@@ -178,8 +291,8 @@ async function load() {
   loadError.value = false;
 
   try {
-    const body = JSON.stringify({ token: gate.token.value, radioKey: gate.radioKey.value });
     const headers = { 'Content-Type': 'application/json' };
+    const body = authBody();
 
     // Both endpoints take the same auth body and are independent of each
     // other, so fetch them together rather than round-tripping twice.
@@ -206,15 +319,79 @@ async function load() {
   }
 }
 
+async function loadLiveStatus() {
+  try {
+    const res = await fetch('/api/v1/live-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: authBody(),
+    });
+    if (!res.ok) return;
+    liveStatus.value = await res.json();
+  } catch {
+    // A failed refresh just leaves the last-known value on screen -- this is
+    // a nice-to-have readout, not something the rest of the page should
+    // block or error out on.
+  }
+}
+
+function stopAutoRefresh() {
+  if (metricsInterval !== null) {
+    clearInterval(metricsInterval);
+    metricsInterval = null;
+  }
+  if (liveInterval !== null) {
+    clearInterval(liveInterval);
+    liveInterval = null;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  metricsInterval = setInterval(load, METRICS_REFRESH_MS);
+  liveInterval = setInterval(() => {
+    loadLiveStatus();
+    now.value = new Date();
+  }, LIVE_REFRESH_MS);
+}
+
+// Audio/video health rows -- reuse the exact same detection AudioStream.vue
+// and VideoStream.vue use for the public page, so "is it actually live"
+// means the same thing here as it does to a listener.
+const audioBaseUrl = computed(() => radio.value.audioUrl);
+const audioMountPoint = computed(() => radio.value.audioMountPoint);
+const videoUrl = computed(() => radio.value.videoUrl);
+
+const { isLive: audioLive } = useIcecastLiveStatus(audioBaseUrl, audioMountPoint);
+const { healthy: videoHealthy, start: startVideoHealthCheck } = useVideoHealth(videoUrl);
+
+watch(
+  videoUrl,
+  (url) => {
+    if (url) startVideoHealthCheck();
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   gate.init();
 });
 
 // The gate can reach 'ready' either synchronously-ish out of init() (a
 // stored key was already valid) or much later, once the admin types a key
-// into AdminKeyGate and submitKey() resolves it -- so the fetch is kicked
-// off from a watcher on the stage itself, rather than chained after init().
+// into AdminKeyGate and submitKey() resolves it -- so everything gated on
+// being ready is kicked off from a watcher on the stage itself, rather than
+// chained after init().
 watch(gate.stage, (stage) => {
-  if (stage === 'ready') load();
+  if (stage !== 'ready') return;
+  load();
+  loadLiveStatus();
+  startAutoRefresh();
+  // Same persistent connection AdminChat.vue uses -- opening it here too
+  // means unread counts (once surfaced) keep tracking accurately even if
+  // staff spend most of their time on this page instead of the chat one.
+  chatStore.ensureConnected(gate.radioKey.value!);
 });
+
+onUnmounted(stopAutoRefresh);
 </script>
