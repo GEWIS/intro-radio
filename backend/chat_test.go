@@ -131,6 +131,7 @@ func TestRadioToUserForwarding(t *testing.T) {
 
 	userTok := makeToken(t, GEWISSecret, 22222, "Carol", "User", time.Minute)
 	radioTok := makeToken(t, GEWISSecret, 33333, "Dave", "Radio", time.Minute)
+	otherRadioTok := makeToken(t, GEWISSecret, 44444, "Erin", "Radio", time.Minute)
 
 	user := dialAndHandshake(t, wsBase, "user", userTok, "")
 	defer user.Close()
@@ -138,18 +139,44 @@ func TestRadioToUserForwarding(t *testing.T) {
 	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
 
+	otherRadio := dialAndHandshake(t, wsBase, "radio", otherRadioTok, RADIOChatKey)
+	defer otherRadio.Close()
+
+	// Give the server a moment to finish registering all three connections;
+	// otherwise the mirror below can race the otherRadio handshake and never
+	// see it in c.radios.
+	time.Sleep(100 * time.Millisecond)
+
 	// Send from radio to user 22222
 	msg := IncomingMessage{Token: radioTok, To: "22222", Content: "hello user"}
 	if err := radio.WriteJSON(msg); err != nil {
 		t.Fatalf("radio write: %v", err)
 	}
 
+	// The listener must only ever see the generic "radio" identity -- never
+	// the replying staff member's real lidnr or name.
 	out, err := readJSONWithDeadline[OutgoingMessage](t, user, 2*time.Second)
 	if err != nil {
 		t.Fatalf("user read: %v", err)
 	}
-	if out.From != "33333" || out.To != "22222" || out.Content != "hello user" {
-		t.Fatalf("unexpected message: %+v", out)
+	if out.From != "radio" || out.To != "22222" || out.Content != "hello user" {
+		t.Fatalf("unexpected message to listener: %+v", out)
+	}
+	if out.GivenName != "" || out.FamilyName != "" {
+		t.Fatalf("listener-bound message leaked staff identity: %+v", out)
+	}
+
+	// The mirrored copy to other radios keeps the real identity so
+	// colleagues can tell who answered.
+	mirrored, err := readJSONWithDeadline[OutgoingMessage](t, otherRadio, 2*time.Second)
+	if err != nil {
+		t.Fatalf("other radio read: %v", err)
+	}
+	if mirrored.From != "33333" || mirrored.To != "22222" || mirrored.Content != "hello user" {
+		t.Fatalf("unexpected mirrored message: %+v", mirrored)
+	}
+	if mirrored.GivenName != "Dave" || mirrored.FamilyName != "Radio" {
+		t.Fatalf("mirrored message missing staff identity: %+v", mirrored)
 	}
 }
 
