@@ -10,7 +10,12 @@
 
       <v-row>
         <v-col cols="12">
-          <AudioStream v-if="isStarted" :base-url="radio.audioUrl" :mount-point="radio.audioMountPoint" />
+          <AudioStream
+            v-if="isStarted"
+            :base-url="radio.audioUrl"
+            :mount-point="radio.audioMountPoint"
+            @update:is-live="isRadioLive = $event"
+          />
 
           <v-card v-else v-ripple class="py-4" color="primary" rounded="lg">
             <template #title>
@@ -22,7 +27,7 @@
           </v-card>
         </v-col>
 
-        <v-col v-if="isStarted" cols="12">
+        <v-col v-if="isStarted && isRadioLive" cols="12">
           <VideoStream class="mb-8" :src="radio.videoUrl" />
         </v-col>
 
@@ -109,6 +114,7 @@ const { radio } = storeToRefs(store);
 const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
+const isRadioLive = ref(false);
 const { ensureToken, getToken } = useGewisAuth();
 
 onMounted(() => {

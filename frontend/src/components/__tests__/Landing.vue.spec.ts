@@ -68,13 +68,29 @@ describe('Landing', () => {
     expect(started.findComponent(UpcomingEvents).exists()).toBe(true);
   });
 
-  it('shows the audio stream, video stream, and request-song card once started', () => {
+  it('shows the audio stream and request-song card once started, before live status is known', () => {
     const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
 
     expect(wrapper.text()).not.toContain('Going live in:');
     expect(wrapper.findComponent(AudioStream).exists()).toBe(true);
-    expect(wrapper.findComponent(VideoStream).exists()).toBe(true);
     expect(wrapper.findComponent(RequestSong).exists()).toBe(true);
+  });
+
+  it('hides the video until AudioStream reports the radio is live, then shows it', async () => {
+    const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+    expect(wrapper.findComponent(VideoStream).exists()).toBe(false);
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', true);
+    expect(wrapper.findComponent(VideoStream).exists()).toBe(true);
+  });
+
+  it('hides the video again if AudioStream reports the radio went offline', async () => {
+    const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', true);
+    expect(wrapper.findComponent(VideoStream).exists()).toBe(true);
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', false);
+    expect(wrapper.findComponent(VideoStream).exists()).toBe(false);
   });
 
   it('shows a chat prompt (not RadioChat) when there is no token yet', () => {

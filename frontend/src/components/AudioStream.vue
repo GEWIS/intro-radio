@@ -21,7 +21,7 @@
     >
       <template #title>
         <h2 class="text-h5 font-weight-bold">
-          {{ isPlaying ? 'Stop listening' : showLive ? 'Now live' : 'Click to start listening!' }}
+          {{ promptText }}
         </h2>
       </template>
 
@@ -48,11 +48,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps<{
   baseUrl: string;
   mountPoint: string;
+}>();
+
+const emit = defineEmits<{
+  (e: 'update:is-live', value: boolean): void;
 }>();
 
 // The backend's default RADIO_AUDIO_URL has no scheme (e.g. "bata-radio.snt.utwente.nl"),
@@ -69,27 +73,51 @@ const statusUrl = computed(() => `${normalizedBaseUrl.value}/status-json.xsl`);
 const audio = ref<HTMLAudioElement | null>(null);
 const isPlaying = ref(false);
 const nativeSupported = true; // Assume browser can play AAC
-const showLive = ref(false);
+const isLive = ref(false);
 const currentlyPlaying = ref<string | null>(null);
 const listeners = ref<number | null>(null);
 const showListeners = ref(false);
 const hasError = ref(false);
 const errorMessage = ref<string | null>(null);
-let intervalId: number | null = null;
 let statsInterval: number | null = null;
 let switchInterval: number | null = null;
+let liveInterval: number | null = null;
+
+const promptText = computed(() => {
+  if (isPlaying.value) return 'Stop listening';
+  if (!isLive.value) return 'Radio is currently offline';
+  return 'Click to start listening!';
+});
+
+function findMatchingSource(data: any, mountPoint: string) {
+  const sources = data?.icestats?.source;
+  if (Array.isArray(sources)) {
+    return sources.find((s: any) => s.listenurl?.endsWith(mountPoint)) ?? null;
+  }
+  if (sources && sources.listenurl?.endsWith(mountPoint)) {
+    return sources;
+  }
+  return null;
+}
+
+// Independent of play/pause -- this is what decides whether the prompt above
+// invites a click at all, so it has to run continuously from mount, not just
+// while something is already playing.
+async function checkLive() {
+  try {
+    const res = await fetch(statusUrl.value);
+    const data = await res.json();
+    isLive.value = findMatchingSource(data, props.mountPoint) !== null;
+  } catch {
+    isLive.value = false;
+  }
+}
 
 async function fetchCurrentlyPlaying() {
   try {
     const res = await fetch(statusUrl.value);
     const data = await res.json();
-    const sources = data.icestats?.source;
-    let source = null;
-    if (Array.isArray(sources)) {
-      source = sources.find((s: any) => s.listenurl?.endsWith(props.mountPoint));
-    } else if (sources && sources.listenurl?.endsWith(props.mountPoint)) {
-      source = sources;
-    }
+    const source = findMatchingSource(data, props.mountPoint);
     currentlyPlaying.value = source?.title || null;
     listeners.value = typeof source?.listeners === 'number' ? source.listeners : null;
   } catch {
@@ -110,7 +138,7 @@ function clearPlaybackTimers() {
 }
 
 function play() {
-  if (!audio.value) return;
+  if (!audio.value || !isLive.value) return;
   hasError.value = false;
   errorMessage.value = null;
   audio.value.src = streamUrl.value;
@@ -150,14 +178,15 @@ function toggle() {
   }
 }
 
+watch(isLive, (value) => emit('update:is-live', value), { immediate: true });
+
 onMounted(() => {
-  intervalId = setInterval(() => {
-    showLive.value = isPlaying.value ? false : !showLive.value;
-  }, 1500);
+  checkLive();
+  liveInterval = setInterval(checkLive, 15_000);
 });
 
 onUnmounted(() => {
-  if (intervalId !== null) clearInterval(intervalId);
+  if (liveInterval !== null) clearInterval(liveInterval);
   clearPlaybackTimers();
 });
 </script>
