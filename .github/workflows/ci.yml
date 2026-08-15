@@ -89,12 +89,17 @@ jobs:
       test: true
       coverage: true
 
-  # Not path-filtered: it always builds all three images on every push/PR. That costs a
-  # few extra minutes on backend-only or frontend-only changes, but it sidesteps the same
+  # Not path-filtered: it always builds all three images on every PR. That costs a few
+  # extra minutes on backend-only or frontend-only changes, but it sidesteps the same
   # skipped-required-check trap entirely for this job (see the comment on `changes` above)
   # without needing a second matching status-check name for a job that sometimes runs and
   # sometimes doesn't.
+  #
+  # PR-only, not push-to-main: on a push to main, release.yml is about to build (and push)
+  # these same three images for real seconds later -- there's no PR left to gate at that
+  # point, so building them here too would just be the same work twice.
   dockerize:
+    if: github.event_name == 'pull_request'
     uses: GEWIS/actions/.github/workflows/docker-build.yml@v1
     with:
       projects: '["frontend", "frontend/nginx", "backend"]'
