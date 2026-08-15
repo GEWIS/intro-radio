@@ -21,34 +21,54 @@
         </div>
       </v-alert>
 
-      <v-card v-else class="p-2" color="surface-variant" rounded="lg" variant="tonal">
+      <v-card v-else class="pa-2" color="surface-variant" rounded="lg" variant="tonal">
         <!-- First load: keep the skeleton inside the same card frame rather
              than swapping cards in and out once data arrives. -->
         <v-skeleton-loader v-if="loading" type="paragraph, image, list-item-three-line@4" />
 
         <template v-else>
-          <v-card-title class="p-2">Metrics</v-card-title>
+          <v-card-title class="pa-2">Metrics</v-card-title>
           <v-divider />
 
-          <div class="p-2">
+          <div class="pa-2">
             <div v-if="metrics.length === 0" class="text-body-2 text-medium-emphasis">No metrics recorded yet.</div>
 
             <div v-else class="d-flex flex-column ga-4">
               <div v-for="series in metricSeries" :key="series.label">
                 <div class="text-caption text-medium-emphasis mb-1">{{ series.label }}</div>
 
-                <VSparkline
-                  :color="series.color"
-                  height="60"
-                  line-width="2"
-                  :model-value="series.values"
-                  padding="8"
-                  smooth
-                />
+                <!-- The axis-label column and the tick-label spacer below it
+                     share the same fixed width so the tick row -- shared by
+                     both series, since they plot the same timestamps -- lines
+                     up with the sparkline's own horizontal extent. VSparkline
+                     has no built-in axis, so this is a hand-rolled min/max
+                     readout rather than real gridlines. -->
+                <div class="d-flex align-center ga-3">
+                  <div
+                    class="d-flex flex-column justify-space-between text-caption text-medium-emphasis"
+                    style="width: 32px; height: 60px; text-align: right"
+                  >
+                    <span>{{ series.max }}</span>
+                    <span>{{ series.min }}</span>
+                  </div>
 
-                <div class="text-caption text-medium-emphasis mt-1 d-flex justify-space-between">
-                  <span>{{ formatTimestamp(metrics[0].timestamp) }}</span>
-                  <span>{{ formatTimestamp(metrics[metrics.length - 1].timestamp) }}</span>
+                  <VSparkline
+                    class="flex-grow-1"
+                    :color="series.color"
+                    height="60"
+                    line-width="2"
+                    :model-value="series.values"
+                    padding="8"
+                    smooth
+                  />
+                </div>
+              </div>
+
+              <div class="d-flex ga-3">
+                <div style="width: 32px"></div>
+
+                <div class="flex-grow-1 d-flex justify-space-between text-caption text-medium-emphasis">
+                  <span v-for="(tick, i) in metricTicks" :key="i">{{ tick }}</span>
                 </div>
               </div>
             </div>
@@ -56,10 +76,10 @@
 
           <v-divider class="my-2" />
 
-          <v-card-title class="p-2">Audit log</v-card-title>
+          <v-card-title class="pa-2">Audit log</v-card-title>
           <v-divider />
 
-          <div class="p-2">
+          <div class="pa-2">
             <div v-if="auditLog.length === 0" class="text-body-2 text-medium-emphasis">No audit log entries yet.</div>
 
             <div v-else class="overflow-y-auto" style="max-height: 40vh">
@@ -102,10 +122,51 @@ const loadError = ref(false);
 const metrics = ref<MetricPoint[]>([]);
 const auditLog = ref<AuditEntry[]>([]);
 
+// Number of tick labels shown under the charts -- shared by both series
+// since they're sampled at the same timestamps, so there's no need to
+// duplicate the row under each sparkline.
+const TICK_COUNT = 5;
+
+function buildSeries(label: string, color: string, values: number[]) {
+  return {
+    label,
+    color,
+    values,
+    max: values.length > 0 ? Math.max(...values) : 0,
+    min: values.length > 0 ? Math.min(...values) : 0,
+  };
+}
+
 const metricSeries = computed(() => [
-  { label: 'Listeners', color: 'primary', values: metrics.value.map((m) => m.listeners) },
-  { label: 'Chatters', color: 'accent', values: metrics.value.map((m) => m.chatters) },
+  buildSeries('Listeners', 'primary', metrics.value.map((m) => m.listeners)),
+  buildSeries('Chatters', 'accent', metrics.value.map((m) => m.chatters)),
 ]);
+
+// Evenly spaced-by-index tick labels rather than time-scaled ones --
+// VSparkline plots values evenly by array index (not by elapsed time), and a
+// sample can be missing entirely when an Icecast poll failed (see
+// metrics.go's sampleOnce), so the samples aren't reliably evenly spaced in
+// time either. Index-even ticks are honest about that rather than implying
+// a precision the data doesn't have.
+const metricTicks = computed(() => {
+  const points = metrics.value;
+  const n = points.length;
+  if (n === 0) return [];
+
+  const sameDay = new Date(points[0].timestamp).toDateString() === new Date(points[n - 1].timestamp).toDateString();
+
+  const count = Math.min(TICK_COUNT, n);
+  const indices =
+    count === 1 ? [0] : Array.from({ length: count }, (_, i) => Math.round((i * (n - 1)) / (count - 1)));
+
+  return [...new Set(indices)].map((i) => formatTick(points[i].timestamp, sameDay));
+});
+
+function formatTick(iso: string, timeOnly: boolean) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' });
+  return timeOnly ? time : `${d.toLocaleDateString(['nl-NL'])} ${time}`;
+}
 
 function formatTimestamp(iso: string) {
   const d = new Date(iso);

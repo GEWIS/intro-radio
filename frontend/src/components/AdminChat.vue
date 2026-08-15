@@ -1,10 +1,10 @@
 <template>
-  <v-card class="p-2" color="surface-variant" rounded="lg" variant="tonal">
+  <v-card class="pa-2" color="surface-variant" rounded="lg" variant="tonal">
     <v-row class="gap-0" no-gutters>
       <!-- Users list -->
       <v-col class="pr-md-3 mb-4 mb-md-0" cols="12" lg="3" md="4">
         <v-card class="h-100 p-2" flat>
-          <v-card-title class="p-2">Users</v-card-title>
+          <v-card-title class="pa-2">Users</v-card-title>
           <v-divider />
 
           <v-list class="overflow-y-auto p-2" style="height: calc(70vh - 80px)">
