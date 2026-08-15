@@ -6,8 +6,9 @@
         <div class="text-body-2 text-medium-emphasis mt-2">Manage the radio schedule</div>
       </div>
 
-      <div class="d-flex justify-end mb-2">
+      <div class="d-flex justify-end mb-2 ga-4">
         <router-link to="/backoffice">Back to chat</router-link>
+        <router-link to="/backoffice/dashboard">Dashboard</router-link>
       </div>
 
       <v-alert v-if="loadError" class="mb-4" type="error">
