@@ -16,8 +16,13 @@ function statusJsonFor(mountPoint: string, overrides: Record<string, unknown> = 
   };
 }
 
-function mountAudioStream(props: { baseUrl: string; mountPoint: string }) {
-  return mountWithVuetify(AudioStream, { props });
+// isLive is checked once on mount (before any interaction), so every test
+// needs that initial check to resolve before it can rely on isLive's value --
+// e.g. before clicking to play, which now no-ops while not live.
+async function mountAudioStream(props: { baseUrl: string; mountPoint: string }) {
+  const wrapper = mountWithVuetify(AudioStream, { props });
+  await flushPromises();
+  return wrapper;
 }
 
 describe('AudioStream', () => {
@@ -36,39 +41,102 @@ describe('AudioStream', () => {
     vi.unstubAllGlobals();
   });
 
-  it('builds the audio src by prepending https:// when baseUrl has no scheme', () => {
-    const wrapper = mountAudioStream({ baseUrl: 'bata-radio.snt.utwente.nl', mountPoint: '/high' });
+  it('builds the audio src by prepending https:// when baseUrl has no scheme', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'bata-radio.snt.utwente.nl', mountPoint: '/high' });
 
     expect(wrapper.find('audio').attributes('src')).toBe('https://bata-radio.snt.utwente.nl/high');
   });
 
-  it('leaves an explicit scheme alone (no double https://) and strips a trailing slash from baseUrl', () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com/', mountPoint: '/low' });
+  it('leaves an explicit scheme alone (no double https://) and strips a trailing slash from baseUrl', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com/', mountPoint: '/low' });
 
     expect(wrapper.find('audio').attributes('src')).toBe('https://example.com/low');
   });
 
-  it('shows the initial prompt and a button role before any interaction', () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+  it('shows a button role and, once live, the click-to-listen prompt', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     expect(wrapper.find('[role="button"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('Click to start listening!');
   });
 
-  it('blinks the "Now live" prompt on an interval while not playing', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+  it('checks live status immediately on mount, and again every 15 seconds', async () => {
+    await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/status-json.xsl');
 
-    expect(wrapper.text()).toContain('Click to start listening!');
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
-    await vi.advanceTimersByTimeAsync(1500);
-    expect(wrapper.text()).toContain('Now live');
+  it('keeps polling live status even while nothing is playing (it never depends on play/stop)', async () => {
+    await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(4); // mount + 3 ticks, no play() involved at all
+  });
+
+  it('shows a neutral offline message instead of the play prompt when no source matches the mount point', async () => {
+    fetchMock.mockResolvedValue({
+      json: async () => ({
+        icestats: { source: { listenurl: 'https://example.com/low', title: 'Other Stream', listeners: 2 } },
+      }),
+    });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    expect(wrapper.text()).toContain('Radio is currently offline');
+    expect(wrapper.text()).not.toContain('Click to start listening!');
+  });
+
+  it('shows the offline message when the status fetch rejects outright', async () => {
+    fetchMock.mockRejectedValue(new Error('network down'));
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    expect(wrapper.text()).toContain('Radio is currently offline');
+  });
+
+  it('does not start playback on click while not live', async () => {
+    fetchMock.mockResolvedValue({
+      json: async () => ({ icestats: { source: { listenurl: 'https://example.com/low', title: 'Other' } } }),
+    });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    await wrapper.find('[role="button"]').trigger('click');
+
+    expect(wrapper.find('audio').element.play).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('Radio is currently offline');
+  });
+
+  it('recovers automatically once a source appears on a later poll', async () => {
+    fetchMock.mockResolvedValue({
+      json: async () => ({ icestats: { source: { listenurl: 'https://example.com/low', title: 'Other' } } }),
+    });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    expect(wrapper.text()).toContain('Radio is currently offline');
+
+    fetchMock.mockResolvedValue({ json: async () => statusJsonFor('/high') });
+    await vi.advanceTimersByTimeAsync(15_000);
+
     expect(wrapper.text()).toContain('Click to start listening!');
   });
 
+  it('emits update:isLive on mount and whenever the value changes', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    // [false] fires synchronously from the initial default before the mount-time
+    // check has resolved; [true] follows once it does.
+    expect(wrapper.emitted('update:is-live')).toEqual([[false], [true]]);
+
+    fetchMock.mockResolvedValue({
+      json: async () => ({ icestats: { source: { listenurl: 'https://example.com/low', title: 'Other' } } }),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(wrapper.emitted('update:is-live')).toEqual([[false], [true], [false]]);
+  });
+
   it('starts playback on click: plays the audio element and switches the title', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
 
@@ -77,17 +145,17 @@ describe('AudioStream', () => {
   });
 
   it('starts playback via Enter and Space keydown on the card', async () => {
-    const enterWrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const enterWrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     await enterWrapper.find('[role="button"]').trigger('keydown.enter');
     expect(enterWrapper.text()).toContain('Stop listening');
 
-    const spaceWrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const spaceWrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     await spaceWrapper.find('[role="button"]').trigger('keydown.space');
     expect(spaceWrapper.text()).toContain('Stop listening');
   });
 
   it('fetches status-json.xsl from the normalized base URL while playing', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'bata-radio.snt.utwente.nl', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'bata-radio.snt.utwente.nl', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
 
@@ -105,7 +173,7 @@ describe('AudioStream', () => {
         },
       }),
     });
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -116,7 +184,7 @@ describe('AudioStream', () => {
 
   it('shows the source title when icestats.source is a single object matching the mount point', async () => {
     fetchMock.mockResolvedValue({ json: async () => statusJsonFor('/high', { title: 'Solo Source' }) });
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -124,24 +192,19 @@ describe('AudioStream', () => {
     expect(wrapper.text()).toContain('Solo Source');
   });
 
-  it('falls back to "Loading..." when no source matches the mount point', async () => {
-    fetchMock.mockResolvedValue({
-      json: async () => ({
-        icestats: { source: { listenurl: 'https://example.com/low', title: 'Other Stream', listeners: 2 } },
-      }),
-    });
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+  it('falls back to "Loading..." when the matched source has no title yet', async () => {
+    fetchMock.mockResolvedValue({ json: async () => statusJsonFor('/high', { title: null }) });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.text()).not.toContain('Other Stream');
     expect(wrapper.text()).toContain('Loading...');
   });
 
-  it('resets currently-playing to "Loading..." when the status fetch rejects', async () => {
+  it('resets currently-playing to "Loading..." when a later status fetch rejects while playing', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     fetchMock.mockRejectedValue(new Error('network down'));
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -151,18 +214,20 @@ describe('AudioStream', () => {
   });
 
   it('re-fetches currently-playing every 15 seconds while playing', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
+    const callsBeforePlay = fetchMock.mock.calls.length;
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(callsBeforePlay + 1);
 
     await vi.advanceTimersByTimeAsync(15_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // +1 more from fetchCurrentlyPlaying's own 15s tick, +1 from the independent live-status poll's 15s tick.
+    expect(fetchMock).toHaveBeenCalledTimes(callsBeforePlay + 3);
   });
 
   it('toggles between "Currently playing" and listener count every 4 seconds while playing', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -178,7 +243,7 @@ describe('AudioStream', () => {
 
   it('uses singular "is"/"listener" wording when there is exactly one listener', async () => {
     fetchMock.mockResolvedValue({ json: async () => statusJsonFor('/high', { listeners: 1 }) });
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -194,7 +259,7 @@ describe('AudioStream', () => {
     fetchMock.mockResolvedValue({
       json: async () => statusJsonFor('/high', { listeners: 'lots' }),
     });
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -204,7 +269,7 @@ describe('AudioStream', () => {
   });
 
   it('stops playback on a second click: pauses audio and restores the initial title', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -215,21 +280,23 @@ describe('AudioStream', () => {
     expect(wrapper.text()).not.toContain('Currently playing:');
   });
 
-  it('stops polling for status once stopped', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+  it('stops fetching currently-playing info once stopped, but keeps polling live status', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
     const callsWhilePlaying = fetchMock.mock.calls.length;
 
-    await wrapper.find('[role="button"]').trigger('click');
+    await wrapper.find('[role="button"]').trigger('click'); // stop
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(fetchMock).toHaveBeenCalledTimes(callsWhilePlaying);
+    // The live-status poll alone accounts for exactly 2 more calls in 30s (15s, 30s);
+    // fetchCurrentlyPlaying's own interval was cleared by stop() and contributes none.
+    expect(fetchMock).toHaveBeenCalledTimes(callsWhilePlaying + 2);
   });
 
   it('shows an error message and stops playback when the audio element fires an error event', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
@@ -242,7 +309,7 @@ describe('AudioStream', () => {
 
   it('shows an error message when audio.play() rejects (e.g. autoplay blocked)', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     wrapper.find('audio').element.play = vi.fn().mockRejectedValue(new Error('blocked by browser'));
 
     await wrapper.find('[role="button"]').trigger('click');
@@ -254,7 +321,7 @@ describe('AudioStream', () => {
   });
 
   it('clears the error state on the next successful play', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
     await wrapper.find('audio').trigger('error');
@@ -267,7 +334,7 @@ describe('AudioStream', () => {
   });
 
   it('clears all intervals on unmount so no further status fetches happen', async () => {
-    const wrapper = mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
     await wrapper.find('[role="button"]').trigger('click');
     await flushPromises();
