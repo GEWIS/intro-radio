@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # This job never path-filters at the trigger level, on purpose: it always runs and
   # always reports a status, then the two build-and-lint jobs below key off its output
@@ -27,9 +30,10 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Determine changed paths
         id: filter
