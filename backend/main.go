@@ -204,6 +204,9 @@ func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLo
 	mux.HandleFunc("/api/v1/audit-log", func(w http.ResponseWriter, r *http.Request) {
 		auditLogHandler(chat, auditLog, w, r)
 	})
+	mux.HandleFunc("/api/v1/live-status", func(w http.ResponseWriter, r *http.Request) {
+		liveStatusHandler(chat, audioURL, audioMountPoint, w, r)
+	})
 	return mux
 }
 

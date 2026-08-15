@@ -216,6 +216,56 @@ func fetchListenerCount(baseURL, mountPoint string) (int, error) {
 	return 0, fmt.Errorf("no source found for mount point %q", mountPoint)
 }
 
+// LiveStatus is an on-demand snapshot of the radio's audience right now --
+// unlike MetricSample (sampled every metricsSampleInterval and stored),
+// this always costs a live Icecast round trip and is never persisted.
+// Listeners is nullable because a failed Icecast fetch means "unknown," not
+// "zero" -- the same reasoning sampleOnce uses to skip a whole sample
+// rather than record a misleading zero.
+type LiveStatus struct {
+	Listeners *int `json:"listeners"`
+	Chatters  int  `json:"chatters"`
+}
+
+// liveStatusHandler backs POST /api/v1/live-status: same auth shape as
+// metricsHandler, but answers "what's happening right now" instead of
+// returning stored history -- the dashboard's periodic sample can be up to
+// metricsSampleInterval stale, which is fine for a trend chart but not for
+// a "how many people are here right now" readout. baseURL/mountPoint are
+// explicit parameters for the same reason sampleOnce takes them: tests can
+// point this at an httptest.Server instead of a real Icecast.
+func liveStatusHandler(chat *Chat, baseURL, mountPoint string, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RadioKeyValidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+
+	chat.mutex.Lock()
+	chatters := len(chat.users)
+	chat.mutex.Unlock()
+
+	status := LiveStatus{Chatters: chatters}
+	if listeners, err := fetchListenerCount(baseURL, mountPoint); err == nil {
+		status.Listeners = &listeners
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(status)
+}
+
 // metricsHandler backs POST /api/v1/metrics: the backoffice dashboard's
 // only way to read the sampled history, gated by the same shared
 // {token, radioKey} check as every other backoffice-only endpoint (see

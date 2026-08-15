@@ -291,6 +291,116 @@ func TestMetricsHandlerWrongMethod(t *testing.T) {
 	}
 }
 
+func TestLiveStatusHandlerAuthAndShape(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"icestats":{"source":{"listenurl":"http://x/high","listeners":6}}}`))
+	}))
+	defer srv.Close()
+
+	chat := NewChat()
+	chat.mutex.Lock()
+	chat.users["1"] = &Client{id: "1", role: "user"}
+	chat.users["2"] = &Client{id: "2", role: "user"}
+	chat.mutex.Unlock()
+
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+
+	tests := []struct {
+		name       string
+		token      string
+		radioKey   string
+		wantStatus int
+	}{
+		{"valid token and key", validTok, "correct-key", http.StatusOK},
+		{"wrong key", validTok, "wrong-key", http.StatusUnauthorized},
+		{"malformed token", "not-a-jwt", "correct-key", http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(RadioKeyValidateRequest{Token: tt.token, RadioKey: tt.radioKey})
+			if err != nil {
+				t.Fatalf("marshal request: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/live-status", strings.NewReader(string(body)))
+			rec := httptest.NewRecorder()
+
+			liveStatusHandler(chat, srv.URL, "/high", rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d (body=%s)", tt.wantStatus, rec.Code, rec.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var got LiveStatus
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if got.Listeners == nil || *got.Listeners != 6 || got.Chatters != 2 {
+				t.Fatalf("expected listeners=6 chatters=2, got %+v", got)
+			}
+		})
+	}
+}
+
+func TestLiveStatusHandlerListenersNullOnFetchFailure(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	chat := NewChat()
+	validTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	body, err := json.Marshal(RadioKeyValidateRequest{Token: validTok, RadioKey: "correct-key"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/live-status", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+
+	liveStatusHandler(chat, srv.URL, "/high", rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 even when the listener fetch fails, got %d", rec.Code)
+	}
+	var got LiveStatus
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	// A failed fetch means "we don't know," not "zero" -- see LiveStatus's
+	// doc comment. A nil Listeners is how that distinction survives JSON
+	// encoding (omitted entirely would be indistinguishable from a bug that
+	// forgot to set the field at all).
+	if got.Listeners != nil {
+		t.Fatalf("expected Listeners to be nil on a fetch failure, got %+v", *got.Listeners)
+	}
+	if got.Chatters != 0 {
+		t.Fatalf("expected chatters=0, got %d", got.Chatters)
+	}
+}
+
+func TestLiveStatusHandlerWrongMethod(t *testing.T) {
+	chat := NewChat()
+
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/api/v1/live-status", nil)
+		rec := httptest.NewRecorder()
+
+		liveStatusHandler(chat, "http://unused", "/high", rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("%s: expected status 405, got %d", method, rec.Code)
+		}
+	}
+}
+
 func TestMetricsHandlerMalformedJSON(t *testing.T) {
 	chat := NewChat()
 	store := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
