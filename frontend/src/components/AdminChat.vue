@@ -56,7 +56,7 @@
 
                 <!-- Message body -->
                 <div class="flex-grow-1">
-                  <strong>[{{ m.from === 'radio' ? 'Radio' : usersMap[m.from]?.givenName || m.from }}]</strong>
+                  <strong>[{{ messageLabel(m) }}]</strong>
                   <span class="ml-2">{{ m.content }}</span>
                 </div>
               </div>
@@ -149,6 +149,16 @@ function formatTime(ts?: number) {
   return d.toLocaleTimeString(['nl-NL'], { hour: '2-digit', minute: '2-digit' });
 }
 
+// 'you' is our own sentinel for the optimistic local echo in send() below --
+// never a real lidnr. A `to` on any other message means it's a radio-to-
+// radio mirror (listener-authored messages never carry `to`), so we can
+// tell those apart from the listener's own messages without a separate flag.
+function messageLabel(m: ChatMessage): string {
+  if (m.from === 'you') return 'You';
+  if (m.to) return m.given_name || m.family_name || 'Radio';
+  return usersMap.value[m.from]?.givenName || m.from;
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesBox.value) messagesBox.value.scrollTop = messagesBox.value.scrollHeight;
@@ -187,7 +197,6 @@ const {
     // If there is a "to", it was sent by a radio and mirrored to us
     const isFromRadio = Boolean(msg.to && msg.to.length > 0);
     const chatId = isFromRadio ? (msg.to as string) : msg.from;
-    const displayFrom = isFromRadio ? 'radio' : msg.from;
 
     // Maintain user activity for the chat thread
     if (chatId && chatId !== 'radio') {
@@ -208,7 +217,7 @@ const {
     }
 
     if (!chats.value[chatId]) chats.value[chatId] = [];
-    chats.value[chatId].push({ ...msg, from: displayFrom, ts: Date.now() });
+    chats.value[chatId].push({ ...msg, ts: Date.now() });
 
     if (!activeUser.value && chatId && chatId !== 'radio') {
       activeUser.value = chatId;
@@ -228,7 +237,7 @@ function send() {
   if (!sendRaw({ to, content })) return;
 
   if (!chats.value[to]) chats.value[to] = [];
-  chats.value[to].push({ from: 'radio', to, content, ts: Date.now() });
+  chats.value[to].push({ from: 'you', to, content, ts: Date.now() });
 
   touchUser(to);
   input.value = '';

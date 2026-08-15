@@ -134,7 +134,7 @@ describe('AdminChat', () => {
     expect(wrapper.text()).toContain('second message');
   });
 
-  it('sends a reply addressed to the active user, echoes it locally under Radio, and clears the input', async () => {
+  it('sends a reply addressed to the active user, echoes it locally under "You", and clears the input', async () => {
     const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
     onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
@@ -144,6 +144,7 @@ describe('AdminChat', () => {
 
     expect(sendMock).toHaveBeenCalledWith({ to: 'u1', content: 'reply text' });
     expect(wrapper.text()).toContain('reply text');
+    expect(wrapper.text()).toContain('[You]');
     expect((wrapper.get('input').element as HTMLInputElement).value).toBe('');
   });
 
@@ -159,19 +160,38 @@ describe('AdminChat', () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
-  it('routes a mirrored `to`-addressed reply into the sender\'s existing thread as "Radio", without touching their stored name', async () => {
+  it('routes a mirrored `to`-addressed reply into the sender\'s existing thread under the replying admin\'s name, without touching the listener\'s stored name', async () => {
     const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
     onMessageHolder.current!(incoming({ from: 'u1', content: 'first', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
 
     // Another admin replied to u1 from a different session; the server
-    // mirrors it back to us with `to` set instead of `from`.
-    onMessageHolder.current!({ from: 'other-admin', to: 'u1', content: 'handled by someone else' });
+    // mirrors it back to us with `to` set instead of `from`, carrying that
+    // admin's own given/family name.
+    onMessageHolder.current!({
+      from: '99999',
+      to: 'u1',
+      content: 'handled by someone else',
+      given_name: 'Bob',
+      family_name: 'Builder',
+    });
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('handled by someone else');
-    expect(wrapper.text()).toContain('Ada Lovelace (mu1)'); // name untouched
+    expect(wrapper.text()).toContain('[Bob]');
+    expect(wrapper.text()).toContain('Ada Lovelace (mu1)'); // listener's name untouched
     expect(wrapper.find('.v-badge__badge').exists()).toBe(false); // u1 is already active, no new unread
+  });
+
+  it('falls back to "Radio" for a mirrored admin reply that carries no given or family name', async () => {
+    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    onMessageHolder.current!(incoming({ from: 'u1', content: 'first', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+
+    onMessageHolder.current!({ from: '99999', to: 'u1', content: 'handled by someone else' });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('[Radio]');
   });
 
   it('sorts users by most recent activity, newest first', async () => {

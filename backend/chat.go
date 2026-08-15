@@ -283,28 +283,40 @@ func (c *Chat) handleClient(client *Client) {
 }
 
 func (c *Chat) dispatch(client *Client, in IncomingMessage) {
-	out := OutgoingMessage{
+	if client.role == "user" {
+		// User messages go to all radios; staff seeing the listener's real
+		// identity here is intentional.
+		c.forwardToRadios(OutgoingMessage{
+			From:       client.id,
+			GivenName:  client.givenName,
+			FamilyName: client.familyName,
+			To:         in.To,
+			Content:    in.Content,
+		})
+		return
+	}
+
+	// Radio messages. The listener must never learn which staff member is
+	// behind "radio", so the copy delivered to them carries the generic
+	// identity only; the copy mirrored to other radios below keeps the
+	// replying staff member's real identity so colleagues can tell each
+	// other apart.
+	if in.To != "" {
+		c.forwardToUser(in.To, OutgoingMessage{
+			From:    "radio",
+			To:      in.To,
+			Content: in.Content,
+		})
+	}
+
+	// Also mirror to other radios so fellow admins see it
+	c.forwardToOtherRadios(client, OutgoingMessage{
 		From:       client.id,
 		GivenName:  client.givenName,
 		FamilyName: client.familyName,
 		To:         in.To,
 		Content:    in.Content,
-	}
-
-	if client.role == "user" {
-		// User messages go to all radios
-		c.forwardToRadios(out)
-		return
-	}
-
-	// Radio messages
-	if out.To != "" {
-		// Send to the targeted user
-		c.forwardToUser(out.To, out)
-	}
-
-	// Also mirror to other radios so fellow admins see it
-	c.forwardToOtherRadios(client, out)
+	})
 }
 
 // Shutdown closes every currently connected client with a "going away"
