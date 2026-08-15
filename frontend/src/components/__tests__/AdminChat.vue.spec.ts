@@ -1,7 +1,17 @@
+import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import AdminChat from '@/components/AdminChat.vue';
 import { mountWithVuetify } from '@/test-utils';
+
+function mountAdminChat() {
+  // AdminChat now reads/writes chat state through the chat Pinia store
+  // rather than owning it locally -- a fresh Pinia instance per test keeps
+  // that store isolated the same way each test previously got a fresh
+  // component instance with fresh local state.
+  setActivePinia(createPinia());
+  return mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+}
 
 // vi.mock() factories are hoisted above regular top-level statements -- even
 // above this file's own imports -- so a value that needs `ref()` from 'vue'
@@ -64,7 +74,7 @@ describe('AdminChat', () => {
   // badge here, unlike a naive "every message increments unread" reading of
   // the component would suggest.
   it('auto-selects the first-ever sender, with no unread badge', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
 
     onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
@@ -75,7 +85,7 @@ describe('AdminChat', () => {
   });
 
   it('disables the message field until a user is selected, and ignores Enter while disabled', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
 
     expect(wrapper.get('input').attributes('disabled')).toBeDefined();
     await wrapper.get('input').trigger('keydown.enter');
@@ -88,7 +98,7 @@ describe('AdminChat', () => {
   });
 
   it('shows an unread badge for a second sender while a different user is active', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
 
     // First-ever message auto-selects u1 (see above), so u2's message below
     // is the one that actually exercises the unread-increment path.
@@ -107,7 +117,7 @@ describe('AdminChat', () => {
   });
 
   it('selecting a badged user clears the badge and switches the chat panel to them', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
 
     onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
@@ -123,7 +133,7 @@ describe('AdminChat', () => {
   });
 
   it("renders the selected user's own message history", async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
 
     onMessageHolder.current!(incoming({ from: 'u1', content: 'first message', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
@@ -135,7 +145,7 @@ describe('AdminChat', () => {
   });
 
   it('sends a reply addressed to the active user, echoes it locally under "You", and clears the input', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
 
@@ -149,7 +159,7 @@ describe('AdminChat', () => {
   });
 
   it('does not call send() when the socket reports closed, even with a user selected', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
     isClosedBox.current!.value = true;
@@ -161,7 +171,7 @@ describe('AdminChat', () => {
   });
 
   it('routes a mirrored `to`-addressed reply into the sender\'s existing thread under the replying admin\'s name, without touching the listener\'s stored name', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     onMessageHolder.current!(incoming({ from: 'u1', content: 'first', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
 
@@ -184,7 +194,7 @@ describe('AdminChat', () => {
   });
 
   it('falls back to "Radio" for a mirrored admin reply that carries no given or family name', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     onMessageHolder.current!(incoming({ from: 'u1', content: 'first', given_name: 'Ada', family_name: 'Lovelace' }));
     await wrapper.vm.$nextTick();
 
@@ -198,7 +208,7 @@ describe('AdminChat', () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-      const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+      const wrapper = mountAdminChat();
 
       onMessageHolder.current!(incoming({ from: 'u1', content: 'older', given_name: 'Ada', family_name: 'Lovelace' }));
       await wrapper.vm.$nextTick();
@@ -216,7 +226,7 @@ describe('AdminChat', () => {
   });
 
   it('shows the reconnect prompt and disables the input when the socket is closed', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     isClosedBox.current!.value = true;
     await wrapper.vm.$nextTick();
 
@@ -225,7 +235,7 @@ describe('AdminChat', () => {
   });
 
   it('clicking Reconnect calls connect again', async () => {
-    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+    const wrapper = mountAdminChat();
     connectMock.mockClear(); // clear the connect() call from onMounted
 
     await wrapper.get('button').trigger('click'); // "Reconnect" is the only button while no user is selected (Send is a v-btn too, but disabled)
