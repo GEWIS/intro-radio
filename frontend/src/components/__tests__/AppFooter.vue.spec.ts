@@ -98,4 +98,22 @@ describe('AppFooter', () => {
     expect(wrapper.text()).toContain('unknown');
     expect(indicator.attributes('href')).toBeUndefined();
   });
+
+  // Same build-time-only reasoning as the SHA above -- see frontend/Dockerfile's
+  // VITE_APP_VERSION and release.yml's build-args.
+  it('shows the release version when VITE_APP_VERSION is set', () => {
+    vi.stubEnv('VITE_APP_VERSION', 'v1.6.1');
+
+    const wrapper = mountAppFooter();
+
+    expect(wrapper.text()).toContain('v1.6.1');
+  });
+
+  it('falls back to "unknown" for the version when VITE_APP_VERSION is unset', () => {
+    vi.stubEnv('VITE_APP_VERSION', '');
+
+    const wrapper = mountAppFooter();
+
+    expect(wrapper.text()).toContain('unknown');
+  });
 });
