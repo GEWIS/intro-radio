@@ -19,6 +19,13 @@ COPY --from=builder /app/node_modules ./node_modules
 # build` or the PR-validation build in ci.yml) still succeeds.
 ARG GIT_SHA=unknown
 ENV VITE_GIT_SHA=${GIT_SHA}
+
+# Same reasoning as GIT_SHA above -- the semantic-release version tied to
+# whatever release actually produced this image, not package.json's own
+# `version` field (semantic-release here doesn't rewrite that back into the
+# repo, so it stays a stale placeholder).
+ARG APP_VERSION=unknown
+ENV VITE_APP_VERSION=${APP_VERSION}
 ENV NODE_ENV=production
 RUN yarn build
 

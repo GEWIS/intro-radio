@@ -1,7 +1,7 @@
 <template>
   <v-footer app height="40">
-    <div class="text-caption text-disabled d-flex align-center justify-center w-100 gap-1">
-      <div class="text-caption text-disabled d-flex align-center gap-1">
+    <div class="text-caption text-disabled d-flex align-center justify-space-between w-100 gap-1">
+      <div class="d-flex align-center gap-1">
         <v-btn size="small" variant="text">&copy; {{ new Date().getFullYear() }}</v-btn>
         <span>•</span>
         <PrivacyPolicy />
@@ -20,13 +20,34 @@
           <v-icon size="medium">mdi-github</v-icon>
         </v-btn>
 
-        <span>•</span>
+        <v-tooltip location="top" text="Toggle dark mode">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+              icon
+              size="small"
+              variant="text"
+              @click="toggle"
+            >
+              <v-icon size="small">
+                {{ isDark ? 'mdi-white-balance-sunny' : 'mdi-moon-waxing-crescent' }}
+              </v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </div>
 
+      <!-- Deliberately apart from the icon cluster above -- this is a
+      diagnostic aid ("what's actually running"), not a social/legal link,
+      and grouping it with those made it easy to miss. -->
+      <div class="d-flex align-center gap-1">
         <v-tooltip location="top" :text="`Deployed commit: ${gitSha}`">
           <template #activator="{ props }">
             <v-btn
               v-bind="props"
               aria-label="View deployed commit on GitHub"
+              class="text-none"
               :disabled="!commitUrl"
               :href="commitUrl"
               rel="noopener"
@@ -40,24 +61,9 @@
         </v-tooltip>
 
         <span>•</span>
-      </div>
 
-      <v-tooltip location="top" text="Toggle dark mode">
-        <template #activator="{ props }">
-          <v-btn
-            v-bind="props"
-            :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            icon
-            size="small"
-            variant="text"
-            @click="toggle"
-          >
-            <v-icon size="small">
-              {{ isDark ? 'mdi-white-balance-sunny' : 'mdi-moon-waxing-crescent' }}
-            </v-icon>
-          </v-btn>
-        </template>
-      </v-tooltip>
+        <span>{{ appVersion }}</span>
+      </div>
     </div>
   </v-footer>
 </template>
@@ -77,4 +83,9 @@ const gitSha = import.meta.env.VITE_GIT_SHA || 'unknown';
 const isKnownSha = /^[0-9a-f]{7,40}$/i.test(gitSha);
 const shortSha = isKnownSha ? gitSha.slice(0, 7) : gitSha;
 const commitUrl = isKnownSha ? `https://github.com/GEWIS/intro-radio/commit/${gitSha}` : undefined;
+
+// Same build-time-only reasoning as gitSha above (see frontend/Dockerfile's
+// VITE_APP_VERSION) -- this is the semantic-release version tied to whatever
+// release actually produced this image, not a runtime lookup.
+const appVersion = import.meta.env.VITE_APP_VERSION || 'unknown';
 </script>
