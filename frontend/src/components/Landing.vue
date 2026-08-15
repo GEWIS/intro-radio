@@ -108,6 +108,7 @@
 
 <script setup lang="ts">
 import { useCountdown } from '@/composables/useCountdown.ts';
+import { useDocumentTitle } from '@/composables/useDocumentTitle.ts';
 import { useGewisAuth } from '@/composables/useGewisAuth.ts';
 import { useAppStore } from '@/stores/app.ts';
 
@@ -118,6 +119,7 @@ const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
 const isRadioLive = ref(false);
+useDocumentTitle(isRadioLive);
 const { ensureToken, getToken } = useGewisAuth();
 
 onMounted(() => {
