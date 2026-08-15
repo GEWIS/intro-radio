@@ -113,6 +113,17 @@ describe('Landing', () => {
     expect(wrapper.findComponent(VideoStream).exists()).toBe(false);
   });
 
+  it('reflects live status in the document title', async () => {
+    const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+    expect(document.title).toBe('Intro Radio');
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', true);
+    expect(document.title).toBe('🔴 Live · Intro Radio');
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', false);
+    expect(document.title).toBe('Intro Radio');
+  });
+
   it('shows a chat prompt (not RadioChat) when there is no token yet', () => {
     getTokenMock.mockReturnValue(null);
     const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
