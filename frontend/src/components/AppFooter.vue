@@ -21,6 +21,25 @@
         </v-btn>
 
         <span>•</span>
+
+        <v-tooltip location="top" :text="`Deployed commit: ${gitSha}`">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              aria-label="View deployed commit on GitHub"
+              :disabled="!commitUrl"
+              :href="commitUrl"
+              rel="noopener"
+              size="small"
+              target="_blank"
+              variant="text"
+            >
+              {{ shortSha }}
+            </v-btn>
+          </template>
+        </v-tooltip>
+
+        <span>•</span>
       </div>
 
       <v-tooltip location="top" text="Toggle dark mode">
@@ -48,4 +67,14 @@ import PrivacyPolicy from '@/components/PrivacyPolicy.vue';
 import { useDarkMode } from '@/composables/useDarkMode.ts';
 
 const { isDark, toggle } = useDarkMode();
+
+// Baked in at Docker build time (see frontend/Dockerfile and VITE_GIT_SHA),
+// not read from a runtime env var -- there's no git history inside the
+// running container, and this needs to reflect exactly what was built.
+// Falls back to "unknown" for local dev (`yarn dev`) and any build that
+// didn't pass --build-arg GIT_SHA, where there's no real commit to point at.
+const gitSha = import.meta.env.VITE_GIT_SHA || 'unknown';
+const isKnownSha = /^[0-9a-f]{7,40}$/i.test(gitSha);
+const shortSha = isKnownSha ? gitSha.slice(0, 7) : gitSha;
+const commitUrl = isKnownSha ? `https://github.com/GEWIS/intro-radio/commit/${gitSha}` : undefined;
 </script>

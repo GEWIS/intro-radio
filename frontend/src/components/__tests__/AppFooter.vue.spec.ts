@@ -52,6 +52,7 @@ describe('AppFooter', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('shows the current year and a link to the repo', () => {
@@ -67,5 +68,34 @@ describe('AppFooter', () => {
     await wrapper.get('[aria-label="Switch to dark mode"]').trigger('click');
 
     expect(toggleMock).toHaveBeenCalledTimes(1);
+  });
+
+  // This is the whole point of the indicator: given a real commit SHA baked
+  // in at build time (see frontend/Dockerfile's VITE_GIT_SHA), the footer
+  // must show the 7-char short form and link to that exact commit on GitHub
+  // -- so anyone looking at a deployed page can tell precisely what's running.
+  it('shows the short SHA and links to the commit when VITE_GIT_SHA is set', () => {
+    const fullSha = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0';
+    vi.stubEnv('VITE_GIT_SHA', fullSha);
+
+    const wrapper = mountAppFooter();
+    const link = wrapper.get('[aria-label="View deployed commit on GitHub"]');
+
+    expect(wrapper.text()).toContain('a1b2c3d');
+    expect(wrapper.text()).not.toContain(fullSha);
+    expect(link.attributes('href')).toBe(`https://github.com/GEWIS/intro-radio/commit/${fullSha}`);
+  });
+
+  // A build that never received --build-arg GIT_SHA (e.g. `yarn dev` locally)
+  // has no real commit to point at. It must fall back to a plain, non-linking
+  // "unknown" label instead of building a broken /commit/undefined URL.
+  it('falls back to a disabled "unknown" indicator when VITE_GIT_SHA is unset', () => {
+    vi.stubEnv('VITE_GIT_SHA', '');
+
+    const wrapper = mountAppFooter();
+    const indicator = wrapper.get('[aria-label="View deployed commit on GitHub"]');
+
+    expect(wrapper.text()).toContain('unknown');
+    expect(indicator.attributes('href')).toBeUndefined();
   });
 });
