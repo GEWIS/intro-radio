@@ -1,6 +1,6 @@
 import { flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AudioStream from '@/components/AudioStream.vue';
 import Landing from '@/components/Landing.vue';
 import RadioChat from '@/components/RadioChat.vue';
@@ -47,6 +47,26 @@ describe('Landing', () => {
     ensureTokenMock.mockReset();
     getTokenMock.mockReset().mockReturnValue(null);
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    // Landing renders a real (unstubbed) <v-img> for the logo. Without a
+    // real IntersectionObserver, VImg falls back to polling load state via
+    // setTimeout -- and if that timer is still pending when the test
+    // environment tears down, it fires against a since-destroyed `window`,
+    // throwing "window is not defined" as an unhandled rejection well after
+    // the test itself already passed. Same fix AppFooter.vue.spec.ts already
+    // applies for VFooter's ResizeObserver dependency.
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('shows the countdown card and hides every isStarted-gated child before start time', () => {
