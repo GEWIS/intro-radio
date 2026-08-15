@@ -103,5 +103,12 @@ export default defineConfig({
         inline: ['vuetify'],
       },
     },
+    coverage: {
+      provider: 'v8',
+      // json-summary is what GEWIS/actions' lint-and-build-yarn.yml's
+      // coverage-report step reads; json is what it uses for the
+      // per-file coverage table. text is just for local `yarn test --coverage` runs.
+      reporter: ['text', 'json', 'json-summary'],
+    },
   },
 });
