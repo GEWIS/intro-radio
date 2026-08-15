@@ -1,16 +1,25 @@
-FROM node:25-bookworm AS builder
+FROM node:26-bookworm AS builder
 
 WORKDIR /app
 COPY yarn.lock .
 COPY package.json .
 
+# node:26-bookworm no longer ships yarn out of the box the way node:25-bookworm
+# did (this is what broke here the moment the base image bumped) -- installing
+# it directly means this doesn't depend on whatever Corepack does or doesn't
+# ship enabled in any future Node base image either.
+RUN npm install --global yarn
 RUN yarn install --frozen-lockfile
 
-FROM node:25-bookworm AS base
+FROM node:26-bookworm AS base
 
 WORKDIR /app
 COPY . .
 COPY --from=builder /app/node_modules ./node_modules
+
+# Separate FROM from builder above -- doesn't inherit its global yarn install,
+# needs its own.
+RUN npm install --global yarn
 
 # Baked in at build time so the running app can show exactly what's
 # deployed (see src/components/AppFooter.vue) -- there's no git history
