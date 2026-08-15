@@ -9,8 +9,9 @@
       <AdminKeyGate v-if="gate.stage.value !== 'ready'" :gate="gate" />
 
       <template v-else>
-        <div class="d-flex justify-end mb-2">
+        <div class="d-flex justify-end mb-2 ga-4">
           <router-link to="/backoffice/agenda">Manage agenda</router-link>
+          <router-link to="/backoffice/dashboard">Dashboard</router-link>
         </div>
 
         <AdminChat :radio-key="gate.radioKey.value!" />
