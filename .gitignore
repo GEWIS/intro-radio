@@ -5,3 +5,5 @@
 .superpowers/
 agenda.json
 /backend/radiogaga
+/backend/coverage.out
+/backend/coverage-report.md
