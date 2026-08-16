@@ -72,6 +72,14 @@ describe('VideoStream', () => {
     expect(hlsInstances[0].attachMedia).toHaveBeenCalled();
   });
 
+  it('renders native playback controls, so volume/fullscreen are reachable', async () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    const wrapper = mountWithVuetify(VideoStream, { props: { src: 'https://x/stream.m3u8' } });
+    await flushPromises();
+
+    expect(wrapper.get('video').attributes('controls')).toBeDefined();
+  });
+
   it('shows a start button on mobile instead of auto-starting', async () => {
     setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)');
     const wrapper = mountWithVuetify(VideoStream, { props: { src: 'https://x/stream.m3u8' } });

@@ -35,11 +35,11 @@ const CHILD_STUBS = {
   RequestSong: true,
 };
 
-function mountLanding(startTime: Date) {
+function mountLanding(startTime: Date, options: { attachTo?: Element } = {}) {
   setActivePinia(createPinia());
   const store = useAppStore();
   store.radio.startTime = startTime;
-  return mountWithVuetify(Landing, { global: { stubs: CHILD_STUBS } });
+  return mountWithVuetify(Landing, { global: { stubs: CHILD_STUBS }, ...options });
 }
 
 describe('Landing', () => {
@@ -63,6 +63,20 @@ describe('Landing', () => {
         disconnect() {}
       },
     );
+
+    // The share button's "Link copied" v-snackbar renders via Vuetify's
+    // VOverlay, same as PrivacyPolicy.vue.spec.ts's dialog and
+    // AdminChat.vue.spec.ts's own reconnect toast -- neither of these is
+    // implemented by jsdom at all.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal('visualViewport', undefined);
   });
 
   afterEach(() => {
@@ -177,5 +191,94 @@ describe('Landing', () => {
 
     expect(wrapper.findComponent(RadioChat).exists()).toBe(false);
     expect(wrapper.text()).toContain('Start a chat with the radio');
+  });
+
+  describe('sharing', () => {
+    function findShareCard(wrapper: ReturnType<typeof mountLanding>) {
+      const card = wrapper.findAll('[role="button"]').find((el) => el.text().includes('Share Intro Radio'));
+      if (!card) throw new Error('share card not found');
+      return card;
+    }
+
+    // navigator's properties (userAgent, etc. -- which Vuetify's own
+    // createDisplay() reads on mount) live on its prototype chain, not as
+    // this instance's own enumerable properties, so `{ ...navigator }`
+    // silently drops all of them; stubbing the whole global with that spread
+    // breaks Vuetify's own setup instead of Landing's code. Defining just
+    // the one property directly on the real navigator leaves everything
+    // else intact.
+    function stubNavigator(props: Record<string, unknown>) {
+      for (const [key, value] of Object.entries(props)) {
+        Object.defineProperty(navigator, key, { value, configurable: true });
+      }
+    }
+
+    afterEach(() => {
+      // @ts-expect-error -- test-only, restoring jsdom's default (absent) state
+      delete navigator.share;
+      // @ts-expect-error -- same as above
+      delete navigator.clipboard;
+    });
+
+    it('is not shown before the event has started', () => {
+      const wrapper = mountLanding(new Date('2026-06-01T00:00:00Z'));
+      expect(wrapper.text()).not.toContain('Share Intro Radio');
+    });
+
+    it('uses the Web Share API when available, with no clipboard fallback', async () => {
+      const shareMock = vi.fn().mockResolvedValue(undefined);
+      const clipboardSpy = vi.fn();
+      stubNavigator({ share: shareMock, clipboard: { writeText: clipboardSpy } });
+
+      const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+      await findShareCard(wrapper).trigger('click');
+      await flushPromises();
+
+      expect(shareMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Intro Radio', url: window.location.origin }),
+      );
+      expect(clipboardSpy).not.toHaveBeenCalled();
+    });
+
+    it('silently ignores the user dismissing the native share sheet', async () => {
+      stubNavigator({ share: vi.fn().mockRejectedValue(new DOMException('cancelled', 'AbortError')) });
+
+      const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+      await findShareCard(wrapper).trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('Link copied');
+    });
+
+    it('falls back to copying the link when the Web Share API is unavailable', async () => {
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      stubNavigator({ share: undefined, clipboard: { writeText: writeTextMock } });
+
+      // The snackbar teleports its content out of Landing's own subtree (via
+      // Vuetify's VOverlay), so this needs a real attached document and an
+      // assertion against that instead of wrapper.text() -- same pattern as
+      // AdminChat.vue.spec.ts's reconnect-toast test.
+      const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'), { attachTo: document.body });
+      try {
+        await findShareCard(wrapper).trigger('click');
+        await flushPromises();
+        await wrapper.vm.$nextTick();
+
+        expect(writeTextMock).toHaveBeenCalledWith(window.location.origin);
+        expect(document.body.textContent).toContain('Link copied to clipboard');
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it('does nothing visible if clipboard access itself fails', async () => {
+      stubNavigator({ share: undefined, clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+
+      const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+      await findShareCard(wrapper).trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('Link copied');
+    });
   });
 });

@@ -31,6 +31,7 @@
       v-else
       ref="video"
       autoplay
+      controls
       muted
       playsinline
       :poster="poster"

@@ -15,6 +15,7 @@
             :base-url="radio.audioUrl"
             :mount-point="radio.audioMountPoint"
             @update:is-live="isRadioLive = $event"
+            @update:now-playing="nowPlaying = $event"
           />
 
           <v-card v-else v-ripple class="py-4" color="primary" rounded="lg">
@@ -74,6 +75,27 @@
           </v-card>
         </v-col>
 
+        <v-col v-if="isStarted" cols="12">
+          <v-card
+            v-ripple
+            class="py-4"
+            color="surface-variant"
+            role="button"
+            rounded="lg"
+            subtitle="Invite friends to tune in"
+            tabindex="0"
+            title="Share Intro Radio"
+            variant="tonal"
+            @click="shareStream"
+            @keydown.enter.prevent="shareStream"
+            @keydown.space.prevent="shareStream"
+          >
+            <template #prepend>
+              <v-icon class="px-5" icon="mdi-share-variant" />
+            </template>
+          </v-card>
+        </v-col>
+
         <v-col v-for="link in links" :key="link.href" cols="12">
           <v-card
             append-icon="mdi-open-in-new"
@@ -103,6 +125,8 @@
     </div>
 
     <RequestSong v-if="isStarted" />
+
+    <v-snackbar v-model="linkCopied" timeout="2500">Link copied to clipboard</v-snackbar>
   </v-container>
 </template>
 
@@ -119,7 +143,8 @@ const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
 const isRadioLive = ref(false);
-useDocumentTitle(isRadioLive);
+const nowPlaying = ref<string | null>(null);
+useDocumentTitle(isRadioLive, nowPlaying);
 const { ensureToken, getToken } = useGewisAuth();
 
 onMounted(() => {
@@ -131,6 +156,38 @@ async function startChatFlow() {
   // Ensure token, redirect if needed
   const token = await ensureToken();
   if (token) chatActive.value = true;
+}
+
+const linkCopied = ref(false);
+
+// navigator.share is only available on browsers with the Web Share API
+// (mostly mobile) and only in a secure context -- clipboard copy is the
+// fallback everywhere else, not a second choice offered to the user.
+async function shareStream() {
+  const shareData = {
+    title: 'Intro Radio',
+    text: 'Tune in to GEWIS Intro Radio!',
+    url: window.location.origin,
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+    } catch {
+      // AbortError from the user dismissing the native share sheet is
+      // expected and not an error worth surfacing.
+    }
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(shareData.url);
+    linkCopied.value = true;
+  } catch {
+    // Clipboard access can fail outside a secure context or without
+    // permission -- there's no good fallback UI for that, so this just
+    // silently does nothing rather than showing a broken confirmation.
+  }
 }
 
 const links = [

@@ -11,6 +11,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <title>Intro Radio</title>
+
+    <!-- noindex above only keeps this out of search results -- it has no
+         effect on link-preview unfurling in Slack/Discord/WhatsApp/Twitter,
+         which is what these tags are for. Static only: there's no
+         server-side rendering here, so a crawler always sees this fixed
+         copy, never the live "currently playing" track a visitor's browser
+         shows in its own tab title (see useDocumentTitle.ts). -->
+    <meta property="og:title" content="Intro Radio" />
+    <meta property="og:site_name" content="Intro Radio" />
+    <meta property="og:description" content="GEWIS's radio station for the introduction week -- live audio, video, schedule, and chat." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://radio.gewis.nl" />
+    <meta property="og:image" content="https://radio.gewis.nl/apple-touch-icon.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Intro Radio" />
+    <meta name="twitter:description" content="GEWIS's radio station for the introduction week -- live audio, video, schedule, and chat." />
+    <meta name="twitter:image" content="https://radio.gewis.nl/apple-touch-icon.png" />
+    <meta name="theme-color" content="#000000" />
   </head>
   <body>
     <div id="app"></div>
