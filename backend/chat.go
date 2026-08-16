@@ -62,6 +62,23 @@ type OutgoingMessage struct {
 	Content    string `json:"content"`
 }
 
+// PresenceAdmin is one entry in a PresenceMessage's Admins list.
+type PresenceAdmin struct {
+	ID         string `json:"id"`
+	GivenName  string `json:"given_name,omitempty"`
+	FamilyName string `json:"family_name,omitempty"`
+}
+
+// PresenceMessage tells every connected radio who else is currently
+// connected, so staff can see they're not the only one about to reply to a
+// listener. It carries a Type discriminator (unlike OutgoingMessage, which
+// has none) so the frontend can tell the two apart on the same socket
+// without a second connection or endpoint.
+type PresenceMessage struct {
+	Type   string          `json:"type"` // always "presence"
+	Admins []PresenceAdmin `json:"admins"`
+}
+
 type GEWISClaims struct {
 	Lidnr      int    `json:"lidnr"`
 	GivenName  string `json:"given_name"`
@@ -232,6 +249,10 @@ func (c *Chat) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	c.mutex.Unlock()
 
+	if role == "radio" {
+		c.broadcastPresence()
+	}
+
 	log.Info().Str("role", role).Str("id", client.id).Msg("client connected")
 
 	// Handshake frame should not be broadcast unless it contains data
@@ -265,6 +286,9 @@ func (c *Chat) handleClient(client *Client) {
 		c.mutex.Unlock()
 		_ = client.conn.Close()
 		log.Info().Str("role", client.role).Str("id", client.id).Msg("client disconnected")
+		if client.role == "radio" {
+			c.broadcastPresence()
+		}
 	}()
 
 	for {
@@ -364,6 +388,30 @@ func (c *Chat) forwardToOtherRadios(sender *Client, msg OutgoingMessage) {
 		}
 		if err := r.writeMessage(websocket.TextMessage, data); err != nil {
 			log.Warn().Err(err).Str("radio", r.id).Msg("failed to mirror to radio, removing")
+			_ = r.conn.Close()
+			delete(c.radios, r)
+		}
+	}
+}
+
+// broadcastPresence sends every connected radio the current full list of
+// connected radios (itself included -- a staff member seeing their own name
+// in the list is a fine way to confirm the count is live). Called whenever
+// a radio connects or disconnects, so the list staff see is never more than
+// one connect/disconnect event stale.
+func (c *Chat) broadcastPresence() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	admins := make([]PresenceAdmin, 0, len(c.radios))
+	for r := range c.radios {
+		admins = append(admins, PresenceAdmin{ID: r.id, GivenName: r.givenName, FamilyName: r.familyName})
+	}
+	data, _ := json.Marshal(PresenceMessage{Type: "presence", Admins: admins})
+
+	for r := range c.radios {
+		if err := r.writeMessage(websocket.TextMessage, data); err != nil {
+			log.Warn().Err(err).Str("radio", r.id).Msg("failed to send presence, removing")
 			_ = r.conn.Close()
 			delete(c.radios, r)
 		}

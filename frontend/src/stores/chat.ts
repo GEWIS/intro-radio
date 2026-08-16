@@ -14,6 +14,18 @@ type Outgoing = {
 export type ChatUser = { id: string; givenName: string; familyName: string; unread: number; lastActivity: number };
 type ChatMessage = Outgoing & { ts: number };
 
+// The backend's Chat.broadcastPresence sends this (see backend/chat.go's
+// PresenceMessage) on the same socket every other radio-to-radio message
+// travels over, discriminated by `type` -- Outgoing chat messages never
+// carry one, so isPresenceMessage below is a safe type guard between the two.
+export type PresenceAdmin = { id: string; given_name?: string; family_name?: string };
+type PresenceIncoming = { type: 'presence'; admins: PresenceAdmin[] };
+type Incoming = Outgoing | PresenceIncoming;
+
+function isPresenceMessage(msg: Incoming): msg is PresenceIncoming {
+  return (msg as PresenceIncoming).type === 'presence';
+}
+
 // AdminChat's WebSocket connection used to live inside AdminChat.vue itself,
 // opened on mount and closed on unmount -- which meant navigating to the
 // Dashboard (or anywhere else in the backoffice) killed it, so nothing could
@@ -30,6 +42,7 @@ export const useChatStore = defineStore('chat', () => {
   const usersMap = ref<Record<string, ChatUser>>({});
   const chats = ref<Record<string, ChatMessage[]>>({});
   const activeUser = ref<string | null>(null);
+  const admins = ref<PresenceAdmin[]>([]);
 
   let radioKey = '';
   let started = false;
@@ -52,11 +65,16 @@ export const useChatStore = defineStore('chat', () => {
     connect,
     disconnect,
     send: sendRaw,
-  } = useChatSocket<Outgoing>({
+  } = useChatSocket<Incoming>({
     path: '/ws?role=radio',
     getToken: () => getToken(),
     buildHandshake: (token) => ({ token, radioKey }),
     onMessage: (msg) => {
+      if (isPresenceMessage(msg)) {
+        admins.value = msg.admins;
+        return;
+      }
+
       // If there is a "to", it was sent by a radio and mirrored to us
       const isFromRadio = Boolean(msg.to && msg.to.length > 0);
       const chatId = isFromRadio ? (msg.to as string) : msg.from;
@@ -126,6 +144,7 @@ export const useChatStore = defineStore('chat', () => {
     usersMap,
     chats,
     activeUser,
+    admins,
     users,
     totalUnread,
     isClosed,

@@ -34,7 +34,19 @@
               <span class="ml-2">{{ activeUserTitle }}</span>
             </div>
 
-            <v-btn :loading="connecting" size="small" variant="text" @click="chatStore.connect">Reconnect</v-btn>
+            <div class="d-flex align-center ga-3">
+              <v-chip
+                v-if="admins.length > 0"
+                prepend-icon="mdi-account-multiple"
+                size="small"
+                :title="adminNames"
+                variant="tonal"
+              >
+                {{ admins.length }} {{ admins.length === 1 ? 'admin' : 'admins' }} online
+              </v-chip>
+
+              <v-btn :loading="connecting" size="small" variant="text" @click="chatStore.connect">Reconnect</v-btn>
+            </div>
           </v-card-title>
 
           <v-divider />
@@ -93,7 +105,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useChatStore } from '@/stores/chat';
 
 type ChatMessage = { from: string; to?: string; content: string; given_name?: string; family_name?: string; ts: number };
@@ -103,10 +115,16 @@ const props = defineProps<{
 }>();
 
 const chatStore = useChatStore();
-const { isClosed, connecting, users, activeUser, usersMap, chats } = storeToRefs(chatStore);
+const { isClosed, connecting, users, activeUser, usersMap, chats, admins } = storeToRefs(chatStore);
 
 const input = ref('');
 const messagesBox = ref<HTMLDivElement | null>(null);
+
+// Falls back to the bare id for an admin whose token carried no name, same
+// reasoning as messageLabel's 'Radio' fallback below.
+const adminNames = computed(() =>
+  admins.value.map((a) => `${a.given_name ?? ''} ${a.family_name ?? ''}`.trim() || a.id).join(', '),
+);
 
 const activeMessages = computed(() => (activeUser.value ? chats.value[activeUser.value] || [] : []));
 const activeUserTitle = computed(() => {
@@ -163,5 +181,37 @@ function send() {
 // without each of those call sites needing its own explicit scroll call.
 watch(activeMessages, scrollToBottom, { flush: 'post' });
 
-onMounted(() => chatStore.ensureConnected(props.radioKey));
+// Alt+Up/Down cycles through unread conversations without touching the
+// mouse -- Alt- rather than a bare arrow key, since a bare arrow needs to
+// keep moving the caret inside the message v-text-field. Only the users
+// with unread > 0 form the cycle; jumping into it from a user that isn't
+// itself unread (the common case, since selecting a user clears its own
+// unread count) starts at whichever end direction points toward.
+function cycleUnread(direction: 1 | -1) {
+  const queue = users.value.filter((u) => u.unread > 0);
+  if (queue.length === 0) return;
+
+  const currentIdx = queue.findIndex((u) => u.id === activeUser.value);
+  const nextIdx =
+    currentIdx === -1 ? (direction === 1 ? 0 : queue.length - 1) : (currentIdx + direction + queue.length) % queue.length;
+
+  chatStore.selectUser(queue[nextIdx].id);
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (!e.altKey) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    cycleUnread(1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    cycleUnread(-1);
+  }
+}
+
+onMounted(() => {
+  chatStore.ensureConnected(props.radioKey);
+  window.addEventListener('keydown', handleKeydown);
+});
+onUnmounted(() => window.removeEventListener('keydown', handleKeydown));
 </script>

@@ -95,6 +95,27 @@ describe('useChatStore', () => {
     expect(store.totalUnread).toBe(1); // only u3's remains
   });
 
+  it('updates admins from an incoming presence message, without treating it as a chat message', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!({ type: 'presence', admins: [{ id: '1', given_name: 'Ada', family_name: 'Lovelace' }] });
+
+    expect(store.admins).toEqual([{ id: '1', given_name: 'Ada', family_name: 'Lovelace' }]);
+    expect(store.totalUnread).toBe(0);
+    expect(store.users).toHaveLength(0);
+  });
+
+  it('replaces the admins list wholesale on each new presence message', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!({ type: 'presence', admins: [{ id: '1' }, { id: '2' }] });
+    onMessageHolder.current!({ type: 'presence', admins: [{ id: '1' }] });
+
+    expect(store.admins).toEqual([{ id: '1' }]);
+  });
+
   it('persists across being retrieved again in the same Pinia instance, simulating route navigation', () => {
     // AdminChat.vue and dashboard.vue both call useChatStore() independently
     // -- this is the whole point of moving state here instead of leaving it

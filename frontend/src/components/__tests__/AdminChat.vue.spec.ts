@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import AdminChat from '@/components/AdminChat.vue';
+import { useChatStore } from '@/stores/chat';
 import { mountWithVuetify } from '@/test-utils';
 
 function mountAdminChat() {
@@ -241,5 +242,63 @@ describe('AdminChat', () => {
     await wrapper.get('button').trigger('click'); // "Reconnect" is the only button while no user is selected (Send is a v-btn too, but disabled)
 
     expect(connectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a count of connected admins once presence data has arrived, and hides it before then', async () => {
+    const wrapper = mountAdminChat();
+    expect(wrapper.text()).not.toContain('admin online');
+    expect(wrapper.text()).not.toContain('admins online');
+
+    useChatStore().admins = [
+      { id: '1', given_name: 'Ada', family_name: 'Lovelace' },
+      { id: '2', given_name: 'Bob', family_name: 'Builder' },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('2 admins online');
+  });
+
+  it('Alt+ArrowDown selects the most recently active unread conversation', async () => {
+    const wrapper = mountAdminChat();
+    // First-ever message auto-selects u1 (0 unread); u2 and u3 arrive while
+    // u1 is active, so both pick up unread -- u3 is the more recent of the two.
+    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+    onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
+    await wrapper.vm.$nextTick();
+    onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
+    await wrapper.vm.$nextTick();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('Carl Gauss (u3)');
+  });
+
+  it('Alt+ArrowUp selects the least recently active unread conversation', async () => {
+    const wrapper = mountAdminChat();
+    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+    onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
+    await wrapper.vm.$nextTick();
+    onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
+    await wrapper.vm.$nextTick();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('Bob Builder (u2)');
+  });
+
+  it('ignores arrow keys without Alt held, and does nothing once there are no unread conversations left', async () => {
+    const wrapper = mountAdminChat();
+    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('Ada Lovelace (u1)');
   });
 });
