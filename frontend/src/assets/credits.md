@@ -1,6 +1,8 @@
 - Willem: **Co-host**
-- Samuel: **Co-host/tech**
-- Victor: **Co-host/tech**
+- Jens: **Co-host**
+- Martijn: **Co-host**
+- Samuel: **Tech**
+- Victor: **Tech**
 - Jan: **Tech**
 - Tessa: **Organizational/rubric**
 - Max: **Tech/Sound bytes**
