@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
+import HealthHistoryStrip from '@/components/HealthHistoryStrip.vue';
 import { useAppStore } from '@/stores/app';
 import { useChatStore } from '@/stores/chat';
 import { mountWithVuetify } from '@/test-utils';
@@ -180,6 +181,46 @@ describe('backoffice/dashboard.vue', () => {
     expect(text.indexOf('Bob Builder')).toBeLessThan(text.indexOf('14')); // 15 Aug group renders before 14 Aug
   });
 
+  it('filters the metrics chart and audit log down to a single picked day', async () => {
+    const metrics = [
+      metricPoint({ timestamp: '2026-08-15T10:00:00Z', listeners: 3, chatters: 1 }),
+      metricPoint({ timestamp: '2026-08-14T10:00:00Z', listeners: 9, chatters: 4 }),
+    ];
+    const auditLog = [
+      auditEntry({ timestamp: '2026-08-15T10:00:00Z', lidnr: 1, given_name: 'Ada', family_name: 'Lovelace' }),
+      auditEntry({ timestamp: '2026-08-14T09:00:00Z', lidnr: 2, given_name: 'Bob', family_name: 'Builder' }),
+    ];
+    const wrapper = await mountDashboard(defaultFetchImpl(metrics, auditLog));
+
+    // Unfiltered: both days' peaks and both staff members show up.
+    expect(wrapper.text()).toContain('Peak: 9');
+    expect(wrapper.text()).toContain('Bob Builder');
+
+    const select = wrapper.findComponent({ name: 'VSelect' });
+    await select.setValue('2026-08-14');
+    await wrapper.vm.$nextTick();
+
+    // Filtered to the 14th: only that day's peak and audit entry remain.
+    expect(wrapper.text()).not.toContain('Peak: 3');
+    expect(wrapper.text()).toContain('Peak: 9');
+    expect(wrapper.text()).not.toContain('Ada Lovelace');
+    expect(wrapper.text()).toContain('Bob Builder');
+  });
+
+  it('shows a day-scoped empty message once a day with no data is picked', async () => {
+    const auditLog = [auditEntry({ timestamp: '2026-08-15T10:00:00Z' })];
+    const wrapper = await mountDashboard(defaultFetchImpl([], auditLog));
+
+    const select = wrapper.findComponent({ name: 'VSelect' });
+    await select.setValue('2026-08-15');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('No metrics recorded for this day.');
+
+    await select.setValue(null);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('No metrics recorded yet.');
+  });
+
   it('links each audit-log entry to that person\'s chat thread', async () => {
     const wrapper = await mountDashboard(defaultFetchImpl([], [auditEntry({ lidnr: 42 })]));
 
@@ -273,6 +314,36 @@ describe('backoffice/dashboard.vue', () => {
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/metrics').length).toBe(2);
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterInitialLoad);
+  });
+
+  it('feeds each health strip a growing history as time passes', async () => {
+    vi.useFakeTimers();
+    setActivePinia(createPinia());
+    localStorage.setItem('RADIO_ADMIN_KEY', 'stored-key');
+    validateRadioKeyQuickMock.mockResolvedValue(true);
+    ensureTokenMock.mockResolvedValue('a-token');
+    audioLiveBox.current = null;
+    videoHealthyBox.current = null;
+
+    const store = useAppStore();
+    store.radio.audioUrl = 'https://example.com';
+    store.radio.audioMountPoint = '/high';
+    store.radio.videoUrl = 'https://example.com/stream.m3u8';
+
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(defaultFetchImpl()(url))));
+
+    const wrapper = mount(Dashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const [audioStrip, videoStrip] = wrapper.findAllComponents(HealthHistoryStrip);
+    expect(audioStrip.props('history')).toHaveLength(1);
+    expect(videoStrip.props('history')).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(audioStrip.props('history').length).toBeGreaterThan(1);
+    expect(videoStrip.props('history').length).toBeGreaterThan(1);
   });
 
   it('stops auto-refreshing on unmount', async () => {
