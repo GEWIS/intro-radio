@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { useChatStore } from '@/stores/chat';
 import { mountWithVuetify } from '@/test-utils';
@@ -18,15 +18,25 @@ vi.mock('@/composables/useGewisAuth', () => ({
 vi.mock('@/composables/useRadioKeyValidation', () => ({
   validateRadioKeyQuick: validateRadioKeyQuickMock,
 }));
-vi.mock('@/composables/useChatSocket', () => ({
-  useChatSocket: () => ({
-    isClosed: { value: false },
-    connecting: { value: false },
-    connect: connectMock,
-    disconnect: vi.fn(),
-    send: vi.fn(),
-  }),
-}));
+// Real ref()s, not plain { value: false } objects: AdminChat.vue's new
+// reconnect-toast logic reads isClosed.value directly in <script setup>
+// (not just via the template's auto-unwrap), and storeToRefs -- which sits
+// between the chat store and AdminChat -- only picks up genuinely reactive
+// values, silently losing a plain object instead of passing it through.
+vi.mock('@/composables/useChatSocket', async () => {
+  const { ref } = await import('vue');
+  return {
+    useChatSocket: () => ({
+      isClosed: ref(false),
+      connecting: ref(false),
+      connect: connectMock,
+      disconnect: vi.fn(),
+      send: vi.fn(),
+    }),
+  };
+});
+
+let currentWrapper: ReturnType<typeof mountWithVuetify> | null = null;
 
 async function mountAtUrl(url: string) {
   setActivePinia(createPinia());
@@ -39,6 +49,7 @@ async function mountAtUrl(url: string) {
   await router.isReady();
 
   const wrapper = mountWithVuetify(BackofficeIndex, { global: { plugins: [router] } });
+  currentWrapper = wrapper;
   // gate.init() (onMounted) and the resulting stage/query watcher both
   // resolve across a couple of microtask turns.
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -50,6 +61,26 @@ describe('backoffice/index.vue', () => {
   beforeEach(() => {
     localStorage.clear();
     connectMock.mockClear();
+    // This page renders the real AdminChat, whose reconnect-toast
+    // v-snackbar renders via Vuetify's VOverlay -- see
+    // AdminChat.vue.spec.ts for why both of these need stubbing.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal('visualViewport', undefined);
+  });
+
+  afterEach(() => {
+    // Must run before vi.unstubAllGlobals() -- VOverlay's own unmount-time
+    // cleanup reaches for visualViewport too (see AdminChat.vue.spec.ts).
+    currentWrapper?.unmount();
+    currentWrapper = null;
+    vi.unstubAllGlobals();
   });
 
   it('selects the user named in ?user= once the admin gate is ready', async () => {

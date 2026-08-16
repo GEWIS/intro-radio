@@ -12,6 +12,7 @@
         <div class="d-flex justify-end mb-2 ga-4">
           <router-link to="/backoffice/agenda">Manage agenda</router-link>
           <router-link to="/backoffice/dashboard">Dashboard</router-link>
+          <router-link to="/backoffice/status">Status</router-link>
         </div>
 
         <AdminChat :radio-key="gate.radioKey.value!" />

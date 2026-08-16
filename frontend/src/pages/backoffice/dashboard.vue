@@ -9,6 +9,7 @@
       <div class="d-flex justify-end mb-2 ga-4">
         <router-link to="/backoffice">Back to chat</router-link>
         <router-link to="/backoffice/agenda">Manage agenda</router-link>
+        <router-link to="/backoffice/status">Status</router-link>
       </div>
 
       <AdminKeyGate v-if="gate.stage.value !== 'ready'" :gate="gate" />
@@ -117,15 +118,28 @@
                       <span>{{ series.min }}</span>
                     </div>
 
-                    <VSparkline
-                      class="flex-grow-1"
-                      :color="series.color"
-                      height="60"
-                      line-width="2"
-                      :model-value="series.values"
-                      padding="8"
-                      smooth
-                    />
+                    <div class="flex-grow-1" style="position: relative">
+                      <VSparkline
+                        :color="series.color"
+                        height="60"
+                        line-width="2"
+                        :model-value="series.values"
+                        padding="8"
+                        smooth
+                        width="300"
+                      />
+
+                      <div
+                        v-if="peakPosition(series)"
+                        class="peak-marker"
+                        :style="{
+                          left: `${peakPosition(series)!.leftPercent}%`,
+                          top: `${peakPosition(series)!.topPercent}%`,
+                          background: `rgb(var(--v-theme-${series.color}))`,
+                        }"
+                        :title="`Peak: ${series.peak!.value}`"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -260,8 +274,38 @@ const filteredMetrics = computed(() => {
 
 function peakOf(points: MetricPoint[], key: 'listeners' | 'chatters') {
   if (points.length === 0) return null;
-  const peak = points.reduce((max, m) => (m[key] > max[key] ? m : max));
-  return { value: peak[key], timestamp: peak.timestamp };
+  let peakIndex = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i][key] > points[peakIndex][key]) peakIndex = i;
+  }
+  return { value: points[peakIndex][key], timestamp: points[peakIndex].timestamp, index: peakIndex };
+}
+
+// VSparkline's default width/height/padding -- pinned here as constants
+// (and passed explicitly to VSparkline below) rather than left implicit,
+// since peakPosition's math below has to stay in exact sync with whatever
+// VSparkline actually renders at.
+const SPARKLINE_WIDTH = 300;
+const SPARKLINE_HEIGHT = 60;
+const SPARKLINE_PADDING = 8;
+
+// Mirrors VTrendline's own genPoints formula (see
+// node_modules/vuetify/lib/components/VSparkline/VTrendline.js) so the peak
+// marker overlay lands exactly on the plotted point instead of an eyeballed
+// approximation -- VSparkline exposes no slot or ref that hands back a
+// point's rendered coordinates directly, so replicating its own (simple,
+// version-pinned-above) math is the least fragile way to place something
+// on top of it. Percentages (not px) so the overlay tracks the SVG's own
+// viewBox scaling regardless of the container's actual rendered width.
+function peakPosition(series: { values: number[]; min: number; max: number; peak: { index: number; value: number } | null }) {
+  if (!series.peak) return null;
+  const count = Math.max(series.values.length, 2);
+  const gridX = (SPARKLINE_WIDTH - 2 * SPARKLINE_PADDING) / (count - 1);
+  const range = series.max - series.min || 1;
+  const gridY = (SPARKLINE_HEIGHT - 2 * SPARKLINE_PADDING) / range;
+  const x = SPARKLINE_PADDING + series.peak.index * gridX;
+  const y = SPARKLINE_HEIGHT - SPARKLINE_PADDING - (series.peak.value - series.min) * gridY;
+  return { leftPercent: (x / SPARKLINE_WIDTH) * 100, topPercent: (y / SPARKLINE_HEIGHT) * 100 };
 }
 
 function buildSeries(label: string, color: string, points: MetricPoint[], key: 'listeners' | 'chatters') {
@@ -463,3 +507,14 @@ watch(gate.stage, (stage) => {
 
 onUnmounted(stopAutoRefresh);
 </script>
+
+<style scoped>
+.peak-marker {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgb(var(--v-theme-surface));
+}
+</style>
