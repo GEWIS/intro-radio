@@ -30,7 +30,14 @@
           {{ errorMessage }}
         </div>
 
-        <div v-else-if="isPlaying" class="mt-2">
+        <div v-else-if="isPlaying" class="mt-2 d-flex align-center ga-2">
+          <!-- Decorative, not a real spectrum analyzer -- confirms "audio is
+               flowing" at a glance without wiring up Web Audio's
+               AnalyserNode just for a visual. -->
+          <span aria-hidden="true" class="audio-level">
+            <span v-for="i in 4" :key="i" class="audio-level__bar" />
+          </span>
+
           <span v-if="!showListeners">
             Currently playing:
             <strong>{{ currentlyPlaying || 'Loading...' }}</strong>
@@ -41,6 +48,23 @@
             <strong>{{ listeners !== null ? listeners : 'Loading...' }}</strong>
             {{ listeners === 1 ? 'listener' : 'listeners' }}!
           </span>
+        </div>
+      </template>
+
+      <template v-if="isPlaying" #append>
+        <div class="d-flex align-center ga-2" style="width: 120px" @click.stop @keydown.enter.stop @keydown.space.stop>
+          <v-icon size="small">{{ volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high' }}</v-icon>
+
+          <v-slider
+            v-model="volume"
+            color="white"
+            hide-details
+            max="1"
+            min="0"
+            step="0.05"
+            thumb-label
+            track-color="white"
+          />
         </div>
       </template>
     </v-card>
@@ -58,6 +82,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:is-live', value: boolean): void;
+  (e: 'update:now-playing', value: string | null): void;
 }>();
 
 const { isLive, normalizedBaseUrl, statusUrl } = useIcecastLiveStatus(toRef(props, 'baseUrl'), toRef(props, 'mountPoint'));
@@ -78,6 +103,27 @@ const hasError = ref(false);
 const errorMessage = ref<string | null>(null);
 let statsInterval: number | null = null;
 let switchInterval: number | null = null;
+
+const VOLUME_STORAGE_KEY = 'RADIO_VOLUME';
+// Persisted across visits, same reasoning as useAdminGate's stored radio
+// key -- a listener who turns the volume down once shouldn't have to redo
+// it every time they open the page. Falls back to full volume rather than
+// silence on a corrupt/out-of-range stored value.
+function loadStoredVolume(): number {
+  const raw = Number(localStorage.getItem(VOLUME_STORAGE_KEY));
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
+}
+const volume = ref(loadStoredVolume());
+watch(volume, (v) => {
+  if (audio.value) audio.value.volume = v;
+  localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
+});
+
+// Lets the tab title (see useDocumentTitle.ts, wired up by Landing.vue) show
+// the actual track instead of just "Live" -- fires on every change,
+// including back to null once playback stops, without a separate emit call
+// at each of currentlyPlaying's own mutation sites below.
+watch(currentlyPlaying, (track) => emit('update:now-playing', track));
 
 const promptText = computed(() => {
   if (isPlaying.value) return 'Stop listening';
@@ -114,6 +160,7 @@ function play() {
   hasError.value = false;
   errorMessage.value = null;
   audio.value.src = streamUrl.value;
+  audio.value.volume = volume.value;
   isPlaying.value = true;
   audio.value.play().catch((error) => {
     console.error('Failed to start audio playback', error);
@@ -154,3 +201,50 @@ watch(isLive, (value) => emit('update:is-live', value), { immediate: true });
 
 onUnmounted(clearPlaybackTimers);
 </script>
+
+<style scoped>
+.audio-level {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+
+.audio-level__bar {
+  width: 3px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 1px;
+  animation: audio-level-bounce 1s ease-in-out infinite;
+}
+
+.audio-level__bar:nth-child(1) {
+  animation-delay: 0s;
+}
+.audio-level__bar:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.audio-level__bar:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.audio-level__bar:nth-child(4) {
+  animation-delay: 0.1s;
+}
+
+@keyframes audio-level-bounce {
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-level__bar {
+    animation: none;
+    height: 8px;
+  }
+}
+</style>

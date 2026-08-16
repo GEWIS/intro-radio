@@ -28,12 +28,22 @@
       <!-- Chat panel -->
       <v-col class="pl-md-3" cols="12" lg="9" md="8">
         <v-card class="h-100 d-flex flex-column p-2" flat>
-          <v-card-title class="p-2 d-flex align-center justify-space-between">
+          <v-card-title class="p-2 d-flex flex-wrap align-center justify-space-between ga-2">
             <div>
               <span class="font-weight-medium">Chat with:</span>
               <span class="ml-2">{{ activeUserTitle }}</span>
+
+              <span v-if="activeUser && typingUsers[activeUser]" class="ml-2 text-caption text-medium-emphasis">
+                typing...
+              </span>
             </div>
 
+            <!-- flex-wrap above (not present before the admin-presence chip
+                 and Reconnect button were added here) matters specifically
+                 on narrow screens: without it, this row doesn't shrink or
+                 scroll -- v-card-title's own overflow:hidden just clips
+                 whatever doesn't fit, silently making Reconnect unreachable
+                 rather than visibly overflowing. -->
             <div class="d-flex align-center ga-3">
               <v-chip
                 v-if="admins.length > 0"
@@ -90,6 +100,7 @@
               :disabled="isClosed || !activeUser"
               hide-details
               placeholder="Write a message"
+              @input="chatStore.notifyTyping"
               @keydown.enter="send"
             />
 
@@ -100,6 +111,8 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <v-snackbar v-model="showReconnected" color="success" timeout="3000">Reconnected</v-snackbar>
   </v-card>
 </template>
 
@@ -115,10 +128,20 @@ const props = defineProps<{
 }>();
 
 const chatStore = useChatStore();
-const { isClosed, connecting, users, activeUser, usersMap, chats, admins } = storeToRefs(chatStore);
+const { isClosed, connecting, users, activeUser, usersMap, chats, admins, typingUsers } = storeToRefs(chatStore);
 
 const input = ref('');
 const messagesBox = ref<HTMLDivElement | null>(null);
+
+// Only a *recovery* (closed -> open) shows the toast, not the initial
+// connect -- wasClosed starts at whatever isClosed already is at mount, so
+// a fresh connection succeeding for the first time never counts as one.
+const showReconnected = ref(false);
+let wasClosed = isClosed.value;
+watch(isClosed, (closed) => {
+  if (!closed && wasClosed) showReconnected.value = true;
+  wasClosed = closed;
+});
 
 // Falls back to the bare id for an admin whose token carried no name, same
 // reasoning as messageLabel's 'Radio' fallback below.

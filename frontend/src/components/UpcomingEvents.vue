@@ -40,7 +40,7 @@
             v-for="(event, idx) in ev"
             :key="`${date}-${idx}`"
             class="d-flex align-center mb-3 pa-3"
-            :class="{ 'current-event': isCurrentAgendaEvent(event) }"
+            :class="{ 'current-event': isCurrentAgendaEvent(event, now) }"
             :style="{
               background: isDark ? event.colorDark : event.color,
               borderRadius: '10px',
@@ -48,7 +48,7 @@
           >
             <v-icon class="mr-3" :color="event.iconColor">{{ event.icon }}</v-icon>
 
-            <div>
+            <div class="flex-grow-1">
               <div class="font-weight-bold" style="font-size: 1.1rem">
                 {{ event.title }}
               </div>
@@ -57,6 +57,19 @@
 
               <div class="text-caption text-secondary">
                 <span v-if="event.time">{{ event.time }}</span>
+              </div>
+
+              <!-- Only the currently-running segment gets this -- upcoming
+                   and past segments have no "remaining" to speak of. -->
+              <div v-if="isCurrentAgendaEvent(event, now)" class="mt-1" style="max-width: 220px">
+                <v-progress-linear
+                  color="orange"
+                  height="4"
+                  :model-value="remainingPercent(event)"
+                  rounded
+                />
+
+                <div class="text-caption text-secondary mt-1">{{ minutesRemaining(event) }} min left</div>
               </div>
             </div>
           </div>
@@ -69,27 +82,61 @@
 <script setup lang="ts">
 import type { AgendaEvent } from '@/stores/app';
 import { storeToRefs } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { isCurrentAgendaEvent, parseAgendaDateTime } from '@/composables/useAgendaTiming.ts';
 import { useDarkMode } from '@/composables/useDarkMode.ts';
 import { useAppStore } from '@/stores/app';
 
 const { isDark } = useDarkMode();
 
-const expanded = ref(false);
+// Persisted so a listener who left this open (or closed it) doesn't have to
+// redo that on every visit -- same reasoning as AudioStream's stored volume.
+const EXPANDED_STORAGE_KEY = 'RADIO_SCHEDULE_EXPANDED';
+const expanded = ref(localStorage.getItem(EXPANDED_STORAGE_KEY) === 'true');
 
 function toggle() {
   expanded.value = !expanded.value;
+  localStorage.setItem(EXPANDED_STORAGE_KEY, String(expanded.value));
+}
+
+// Drives both isCurrentAgendaEvent's highlight and the remaining-time bar
+// below -- without a reactive "now," neither would ever update after the
+// initial render, since evaluating `new Date()` inside a template
+// expression doesn't itself trigger a re-render as time passes.
+const now = ref(new Date());
+let nowInterval: number | null = null;
+onMounted(() => {
+  nowInterval = window.setInterval(() => {
+    now.value = new Date();
+  }, 30_000);
+});
+onUnmounted(() => {
+  if (nowInterval !== null) clearInterval(nowInterval);
+});
+
+function remainingPercent(event: AgendaEvent): number {
+  const start = parseAgendaDateTime(event.date, event.time).getTime();
+  const end = parseAgendaDateTime(event.date, event.time, true).getTime();
+  const total = end - start;
+  if (total <= 0) return 0;
+  return Math.min(100, Math.max(0, ((now.value.getTime() - start) / total) * 100));
+}
+
+function minutesRemaining(event: AgendaEvent): number {
+  const end = parseAgendaDateTime(event.date, event.time, true).getTime();
+  return Math.max(0, Math.round((end - now.value.getTime()) / 60_000));
 }
 
 const { agenda: events } = storeToRefs(useAppStore());
 
 // Only show events that have not ended yet
+// Reactive on the ticking `now` above (not a local `new Date()`), so an
+// event that just ended drops out of the list on its own instead of only
+// updating the next time `events` itself changes.
 const upcomingEvents = computed(() => {
-  const now = new Date();
   return events.value.filter((event) => {
     const end = parseAgendaDateTime(event.date, event.time, true);
-    return now < end;
+    return now.value < end;
   });
 });
 

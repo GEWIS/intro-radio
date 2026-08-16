@@ -9,6 +9,7 @@
       <div class="d-flex justify-end mb-2 ga-4">
         <router-link to="/backoffice">Back to chat</router-link>
         <router-link to="/backoffice/dashboard">Dashboard</router-link>
+        <router-link to="/backoffice/status">Status</router-link>
       </div>
 
       <v-alert v-if="loadError" class="mb-4" type="error">

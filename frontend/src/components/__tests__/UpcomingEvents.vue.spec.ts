@@ -19,6 +19,7 @@ function mountWithAgenda(agenda: ReturnType<typeof useAppStore>['agenda'], optio
 
 describe('UpcomingEvents', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     // UpcomingEvents.vue calls the real useDarkMode() (not mocked -- out of
     // scope for this task) to decide each event row's background; that
@@ -87,5 +88,47 @@ describe('UpcomingEvents', () => {
     await wrapper.get('[role="button"]').trigger('click');
 
     expect(wrapper.findAll('.text-caption.font-weight-bold')).toHaveLength(1);
+  });
+
+  it('shows a remaining-time progress bar and minutes-left text only on the currently running segment', async () => {
+    const wrapper = mountWithAgenda([
+      // Same overnight window the test above already proves is "current" at
+      // the frozen system time of 2026-01-01T00:00:00Z.
+      { title: 'Current', subtitle: '', icon: 'mdi-star', iconColor: 'blue', color: '#fff', colorDark: '#000', date: '2025-12-31', time: '20:00 - 08:00' },
+      { title: 'Future', subtitle: '', icon: 'mdi-star', iconColor: 'blue', color: '#fff', colorDark: '#000', date: '2027-01-01', time: '9:00 - 10:00' },
+    ]);
+    await wrapper.get('[role="button"]').trigger('click');
+
+    expect(wrapper.text()).toContain('min left');
+    // .v-progress-linear--rounded (from this component's own `rounded` prop)
+    // excludes Vuetify's own hidden, always-present page-load progress bar,
+    // which also matches a bare `.v-progress-linear` or a by-name component
+    // lookup but isn't this feature.
+    expect(wrapper.findAll('.v-progress-linear--rounded')).toHaveLength(1);
+  });
+
+  it('advances the remaining-time bar as time passes, without needing to remount', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const wrapper = mountWithAgenda([
+      { title: 'Current', subtitle: '', icon: 'mdi-star', iconColor: 'blue', color: '#fff', colorDark: '#000', date: '2025-12-31', time: '20:00 - 08:00' },
+    ]);
+    await wrapper.get('[role="button"]').trigger('click');
+
+    const bar = () => Number(wrapper.get('.v-progress-linear--rounded').attributes('aria-valuenow'));
+    const before = bar();
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000); // several 30s ticks of the internal "now" timer
+
+    expect(bar()).toBeGreaterThan(before);
+  });
+
+  it('persists the expanded/collapsed state across remounts', async () => {
+    const first = mountWithAgenda([]);
+    await first.get('[role="button"]').trigger('click');
+    expect(first.get('[aria-expanded]').attributes('aria-expanded')).toBe('true');
+
+    const second = mountWithAgenda([]); // fresh component instance, same localStorage
+    expect(second.get('[aria-expanded]').attributes('aria-expanded')).toBe('true');
   });
 });

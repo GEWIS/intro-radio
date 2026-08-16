@@ -116,6 +116,78 @@ describe('useChatStore', () => {
     expect(store.admins).toEqual([{ id: '1' }]);
   });
 
+  it('sets a typing flag from an incoming typing message, without treating it as a chat message', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!({ type: 'typing', from: 'u1' });
+
+    expect(store.typingUsers).toEqual({ u1: true });
+    expect(store.totalUnread).toBe(0);
+    expect(store.users).toHaveLength(0);
+  });
+
+  it('clears a typing flag automatically after the display timeout', () => {
+    vi.useFakeTimers();
+    try {
+      const store = useChatStore();
+      store.ensureConnected('key-a');
+
+      onMessageHolder.current!({ type: 'typing', from: 'u1' });
+      expect(store.typingUsers).toEqual({ u1: true });
+
+      vi.advanceTimersByTime(3000);
+      expect(store.typingUsers).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a fresh typing signal refreshes the timeout instead of stacking a second one', () => {
+    vi.useFakeTimers();
+    try {
+      const store = useChatStore();
+      store.ensureConnected('key-a');
+
+      onMessageHolder.current!({ type: 'typing', from: 'u1' });
+      vi.advanceTimersByTime(2000);
+      onMessageHolder.current!({ type: 'typing', from: 'u1' }); // refresh before the first would expire
+
+      vi.advanceTimersByTime(2000); // 4s since the first signal, but only 2s since the refresh
+      expect(store.typingUsers).toEqual({ u1: true });
+
+      vi.advanceTimersByTime(1000); // 3s since the refresh
+      expect(store.typingUsers).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('notifyTyping sends a typing signal to the active user, throttled, and does nothing with no active user', () => {
+    vi.useFakeTimers();
+    try {
+      const store = useChatStore();
+      store.ensureConnected('key-a');
+
+      store.notifyTyping(); // no active user yet
+      expect(sendMock).not.toHaveBeenCalled();
+
+      onMessageHolder.current!(incoming({ from: 'u1' })); // auto-selects u1 as active
+      store.notifyTyping();
+      expect(sendMock).toHaveBeenCalledWith({ type: 'typing', to: 'u1' });
+
+      sendMock.mockClear();
+      store.notifyTyping(); // immediately again -- throttled
+      expect(sendMock).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(2000);
+      store.notifyTyping();
+      expect(sendMock).toHaveBeenCalledWith({ type: 'typing', to: 'u1' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('persists across being retrieved again in the same Pinia instance, simulating route navigation', () => {
     // AdminChat.vue and dashboard.vue both call useChatStore() independently
     // -- this is the whole point of moving state here instead of leaving it

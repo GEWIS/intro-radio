@@ -51,6 +51,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/backoffice/status': RouteRecordInfo<
+      '/backoffice/status',
+      '/backoffice/status',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -85,6 +92,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/backoffice/dashboard.vue': {
       routes:
         | '/backoffice/dashboard'
+      views:
+        | never
+    }
+    'src/pages/backoffice/status.vue': {
+      routes:
+        | '/backoffice/status'
       views:
         | never
     }

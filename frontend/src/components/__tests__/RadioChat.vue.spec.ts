@@ -80,6 +80,7 @@ describe('RadioChat', () => {
     const wrapper = mountWithVuetify(RadioChat);
 
     await wrapper.get('input').setValue(' '.repeat(3));
+    sendMock.mockClear(); // setValue's own input event fires a (legitimate) typing signal
     await wrapper.get('input').trigger('keydown.enter');
 
     expect(sendMock).not.toHaveBeenCalled();
@@ -91,5 +92,52 @@ describe('RadioChat', () => {
 
     expect(wrapper.text()).toContain('did you log in in another tab?');
     expect(wrapper.get('input').attributes('disabled')).toBeDefined();
+  });
+
+  it('shows "Radio is typing..." on an incoming typing signal, and hides it again after the display timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = mountWithVuetify(RadioChat);
+      expect(wrapper.text()).not.toContain('Radio is typing...');
+
+      onMessageHolder.current!({ type: 'typing' } as unknown as { content: string });
+      await wrapper.vm.$nextTick();
+      expect(wrapper.text()).toContain('Radio is typing...');
+
+      vi.advanceTimersByTime(3000);
+      await wrapper.vm.$nextTick();
+      expect(wrapper.text()).not.toContain('Radio is typing...');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not mistake a typing signal for a real chat message', async () => {
+    const wrapper = mountWithVuetify(RadioChat);
+
+    onMessageHolder.current!({ type: 'typing' } as unknown as { content: string });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).not.toContain('Radio:');
+  });
+
+  it('typing into the input sends a throttled typing signal', async () => {
+    vi.useFakeTimers();
+    try {
+      const wrapper = mountWithVuetify(RadioChat);
+
+      await wrapper.get('input').setValue('h');
+      expect(sendMock).toHaveBeenCalledWith({ type: 'typing' });
+
+      sendMock.mockClear();
+      await wrapper.get('input').setValue('he'); // immediately again -- throttled
+      expect(sendMock).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(2000);
+      await wrapper.get('input').setValue('hel');
+      expect(sendMock).toHaveBeenCalledWith({ type: 'typing' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

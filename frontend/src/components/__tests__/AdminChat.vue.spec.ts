@@ -1,9 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import AdminChat from '@/components/AdminChat.vue';
 import { useChatStore } from '@/stores/chat';
 import { mountWithVuetify } from '@/test-utils';
+
+let currentWrapper: ReturnType<typeof mountWithVuetify> | null = null;
 
 function mountAdminChat() {
   // AdminChat now reads/writes chat state through the chat Pinia store
@@ -11,7 +13,8 @@ function mountAdminChat() {
   // that store isolated the same way each test previously got a fresh
   // component instance with fresh local state.
   setActivePinia(createPinia());
-  return mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+  currentWrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' } });
+  return currentWrapper;
 }
 
 // vi.mock() factories are hoisted above regular top-level statements -- even
@@ -65,6 +68,34 @@ describe('AdminChat', () => {
     disconnectMock.mockClear();
     sendMock.mockClear().mockReturnValue(true);
     if (isClosedBox.current) isClosedBox.current.value = false;
+    // The new reconnect-toast v-snackbar renders via Vuetify's VOverlay,
+    // same as VDialog/VMenu -- see PrivacyPolicy.vue.spec.ts/
+    // Credits.vue.spec.ts for the same two stubs, neither of which jsdom
+    // implements at all (referencing visualViewport with nothing defining
+    // it throws a bare ReferenceError, not just "undefined").
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal('visualViewport', undefined);
+  });
+
+  afterEach(() => {
+    // The reconnect-toast v-snackbar teleports into the real document.body
+    // regardless of whether the host component is itself attached to it,
+    // so a component left mounted (watching the shared isClosedBox ref
+    // above) can react to a *later* test's state change and leave stray
+    // "Reconnected" text behind for that later test to trip over. This
+    // must run before vi.unstubAllGlobals(): VOverlay's own unmount-time
+    // cleanup also reaches for visualViewport (to remove its listener),
+    // so unstubbing first makes the unmount itself throw.
+    currentWrapper?.unmount();
+    currentWrapper = null;
+    vi.unstubAllGlobals();
   });
 
   // AdminChat.vue's onMessage handler auto-selects a sender as the active
@@ -235,6 +266,34 @@ describe('AdminChat', () => {
     expect(wrapper.get('input').attributes('disabled')).toBeDefined();
   });
 
+  it('shows a "Reconnected" toast once the socket recovers after being closed', async () => {
+    // v-snackbar teleports its content out of AdminChat's own subtree (via
+    // Vuetify's VOverlay), so wrapper.text() can't see it -- attach to a
+    // real document and assert against that instead, same pattern as
+    // PrivacyPolicy.vue.spec.ts's dialog test.
+    setActivePinia(createPinia());
+    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' }, attachTo: document.body });
+    currentWrapper = wrapper;
+
+    isClosedBox.current!.value = true;
+    await wrapper.vm.$nextTick();
+    expect(document.body.textContent).not.toContain('Reconnected');
+
+    isClosedBox.current!.value = false;
+    await wrapper.vm.$nextTick();
+
+    expect(document.body.textContent).toContain('Reconnected');
+  });
+
+  it('does not show the "Reconnected" toast on the very first connect', async () => {
+    setActivePinia(createPinia());
+    const wrapper = mountWithVuetify(AdminChat, { props: { radioKey: 'key' }, attachTo: document.body });
+    currentWrapper = wrapper;
+    await wrapper.vm.$nextTick();
+
+    expect(document.body.textContent).not.toContain('Reconnected');
+  });
+
   it('clicking Reconnect calls connect again', async () => {
     const wrapper = mountAdminChat();
     connectMock.mockClear(); // clear the connect() call from onMounted
@@ -259,35 +318,55 @@ describe('AdminChat', () => {
   });
 
   it('Alt+ArrowDown selects the most recently active unread conversation', async () => {
-    const wrapper = mountAdminChat();
-    // First-ever message auto-selects u1 (0 unread); u2 and u3 arrive while
-    // u1 is active, so both pick up unread -- u3 is the more recent of the two.
-    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
-    await wrapper.vm.$nextTick();
-    onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
-    await wrapper.vm.$nextTick();
-    onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
-    await wrapper.vm.$nextTick();
+    // Fake timers pin down each message's lastActivity explicitly -- without
+    // them, three synchronous Date.now() calls can land in the same
+    // millisecond and fall back to alphabetical tie-breaking instead of
+    // recency, making this flaky rather than wrong.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const wrapper = mountAdminChat();
+      // First-ever message auto-selects u1 (0 unread); u2 and u3 arrive while
+      // u1 is active, so both pick up unread -- u3 is the more recent of the two.
+      onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+      await wrapper.vm.$nextTick();
+      vi.setSystemTime(new Date('2026-01-01T00:00:01Z'));
+      onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
+      await wrapper.vm.$nextTick();
+      vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
+      onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
+      await wrapper.vm.$nextTick();
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true }));
-    await wrapper.vm.$nextTick();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true }));
+      await wrapper.vm.$nextTick();
 
-    expect(wrapper.text()).toContain('Carl Gauss (u3)');
+      expect(wrapper.text()).toContain('Carl Gauss (u3)');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Alt+ArrowUp selects the least recently active unread conversation', async () => {
-    const wrapper = mountAdminChat();
-    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
-    await wrapper.vm.$nextTick();
-    onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
-    await wrapper.vm.$nextTick();
-    onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
-    await wrapper.vm.$nextTick();
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const wrapper = mountAdminChat();
+      onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+      await wrapper.vm.$nextTick();
+      vi.setSystemTime(new Date('2026-01-01T00:00:01Z'));
+      onMessageHolder.current!(incoming({ from: 'u2', content: 'hey', given_name: 'Bob', family_name: 'Builder' }));
+      await wrapper.vm.$nextTick();
+      vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
+      onMessageHolder.current!(incoming({ from: 'u3', content: 'yo', given_name: 'Carl', family_name: 'Gauss' }));
+      await wrapper.vm.$nextTick();
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true }));
-    await wrapper.vm.$nextTick();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true }));
+      await wrapper.vm.$nextTick();
 
-    expect(wrapper.text()).toContain('Bob Builder (u2)');
+      expect(wrapper.text()).toContain('Bob Builder (u2)');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('ignores arrow keys without Alt held, and does nothing once there are no unread conversations left', async () => {
@@ -300,5 +379,30 @@ describe('AdminChat', () => {
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('Ada Lovelace (u1)');
+  });
+
+  it('shows "typing..." while the active user has a live typing signal, and hides it once cleared', async () => {
+    const wrapper = mountAdminChat();
+    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).not.toContain('typing...');
+
+    onMessageHolder.current!({ type: 'typing', from: 'u1' });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('typing...');
+
+    useChatStore().typingUsers = {};
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).not.toContain('typing...');
+  });
+
+  it('typing into the message field notifies the store, which sends a typing signal to the active user', async () => {
+    const wrapper = mountAdminChat();
+    onMessageHolder.current!(incoming({ from: 'u1', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+
+    await wrapper.get('input').setValue('h');
+
+    expect(sendMock).toHaveBeenCalledWith({ type: 'typing', to: 'u1' });
   });
 });

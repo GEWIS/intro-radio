@@ -63,6 +63,11 @@ function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body };
 }
 
+function percentFromStyle(style: string, prop: 'left' | 'top'): number {
+  const match = style.match(new RegExp(String.raw`${prop}:\s*([\d.]+)%`));
+  return match ? Number(match[1]) : Number.NaN;
+}
+
 // This page doesn't need real navigation for any of its own tests -- just
 // its router-links resolving to a real <a href> so href assertions have
 // something concrete to check, without pulling in a full router instance.
@@ -165,6 +170,29 @@ describe('backoffice/dashboard.vue', () => {
 
     expect(wrapper.text()).toContain('Peak: 9');
     expect(wrapper.text()).toContain('Peak: 4');
+  });
+
+  it('positions each peak marker directly over its series\' actual peak point, not just in the caption', async () => {
+    const metrics = [
+      metricPoint({ timestamp: '2026-08-15T10:00:00Z', listeners: 3, chatters: 1 }),
+      metricPoint({ timestamp: '2026-08-15T10:05:00Z', listeners: 9, chatters: 4 }),
+      metricPoint({ timestamp: '2026-08-15T10:10:00Z', listeners: 2, chatters: 2 }),
+    ];
+    const wrapper = await mountDashboard(defaultFetchImpl(metrics));
+
+    const markers = wrapper.findAll('.peak-marker');
+    expect(markers).toHaveLength(2); // one per series
+
+    for (const marker of markers) {
+      const style = marker.attributes('style') ?? '';
+      // Both series peak at index 1 of 3 -> horizontally centered. Being the
+      // max of its own series, a peak always renders at VSparkline's own
+      // top padding inset (8px into a 60px-tall, 8px-padded chart) --
+      // that's a property of how min/max normalization works, not
+      // something specific to these numbers.
+      expect(percentFromStyle(style, 'left')).toBeCloseTo(50, 1);
+      expect(percentFromStyle(style, 'top')).toBeCloseTo((8 / 60) * 100, 1);
+    }
   });
 
   it('groups audit log entries by day, newest day first, with a unique-staff count', async () => {

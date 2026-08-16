@@ -149,6 +149,18 @@ describe('AudioStream', () => {
     expect(wrapper.emitted('update:is-live')).toEqual([[false], [true], [false]]);
   });
 
+  it('emits update:now-playing whenever the current track changes, including back to null when stopped', async () => {
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+    expect(wrapper.emitted('update:now-playing')).toBeUndefined();
+
+    await wrapper.find('[role="button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('update:now-playing')).toEqual([['Now Playing Track']]);
+
+    await wrapper.find('[role="button"]').trigger('click');
+    expect(wrapper.emitted('update:now-playing')).toEqual([['Now Playing Track'], [null]]);
+  });
+
   it('starts playback on click: plays the audio element and switches the title', async () => {
     const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
 
