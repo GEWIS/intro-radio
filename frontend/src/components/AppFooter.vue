@@ -40,8 +40,13 @@
 
       <!-- Deliberately apart from the icon cluster above -- this is a
       diagnostic aid ("what's actually running"), not a social/legal link,
-      and grouping it with those made it easy to miss. -->
-      <div class="d-flex align-center gap-1">
+      and grouping it with those made it easy to miss. Hidden below the `sm`
+      breakpoint: the icon cluster alone already fills nearly the full
+      375px-wide footer, leaving this nowhere to go -- the footer's fixed
+      40px height means it can't wrap onto a second line without either
+      group clipping instead, so on a phone this stays reachable from the
+      GitHub commit history rather than from this bar. -->
+      <div class="d-none d-sm-flex align-center gap-1">
         <v-tooltip location="top" :text="`Deployed commit: ${gitSha}`">
           <template #activator="{ props }">
             <v-btn

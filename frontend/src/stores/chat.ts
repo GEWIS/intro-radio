@@ -20,11 +20,29 @@ type ChatMessage = Outgoing & { ts: number };
 // carry one, so isPresenceMessage below is a safe type guard between the two.
 export type PresenceAdmin = { id: string; given_name?: string; family_name?: string };
 type PresenceIncoming = { type: 'presence'; admins: PresenceAdmin[] };
-type Incoming = Outgoing | PresenceIncoming;
+
+// The backend's Chat.dispatchTyping sends this on the same socket whenever
+// a listener is typing (see backend/chat.go's TypingMessage) -- `to` is
+// never set on these, since a listener's typing signal is only ever
+// broadcast to every radio, never addressed to one.
+type TypingIncoming = { type: 'typing'; from: string; to?: string };
+type Incoming = Outgoing | PresenceIncoming | TypingIncoming;
 
 function isPresenceMessage(msg: Incoming): msg is PresenceIncoming {
   return (msg as PresenceIncoming).type === 'presence';
 }
+
+function isTypingMessage(msg: Incoming): msg is TypingIncoming {
+  return (msg as TypingIncoming).type === 'typing';
+}
+
+// How long a "typing" indicator stays lit after the last signal from that
+// user, and how often notifyTyping() actually sends one while the admin
+// keeps typing -- the send-side throttle is deliberately shorter than the
+// receive-side timeout so a steady stream of keystrokes reliably refreshes
+// the indicator before it expires.
+const TYPING_DISPLAY_MS = 3000;
+const TYPING_SEND_THROTTLE_MS = 2000;
 
 // AdminChat's WebSocket connection used to live inside AdminChat.vue itself,
 // opened on mount and closed on unmount -- which meant navigating to the
@@ -43,9 +61,16 @@ export const useChatStore = defineStore('chat', () => {
   const chats = ref<Record<string, ChatMessage[]>>({});
   const activeUser = ref<string | null>(null);
   const admins = ref<PresenceAdmin[]>([]);
+  // Which listener ids currently have a live "typing" indicator. Presence
+  // in this object is the signal -- each entry clears itself via its own
+  // timer in typingTimers below, so reading it never needs a Date.now()
+  // comparison.
+  const typingUsers = ref<Record<string, true>>({});
 
   let radioKey = '';
   let started = false;
+  let lastTypingSentAt = 0;
+  const typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
   function touchUser(id: string, given?: string, family?: string) {
     const now = Date.now();
@@ -72,6 +97,18 @@ export const useChatStore = defineStore('chat', () => {
     onMessage: (msg) => {
       if (isPresenceMessage(msg)) {
         admins.value = msg.admins;
+        return;
+      }
+
+      if (isTypingMessage(msg)) {
+        // `to` is never set on these (see TypingIncoming's comment), so
+        // `from` is always the listener's id.
+        typingUsers.value = { ...typingUsers.value, [msg.from]: true };
+        clearTimeout(typingTimers[msg.from]);
+        typingTimers[msg.from] = setTimeout(() => {
+          const { [msg.from]: _dropped, ...rest } = typingUsers.value;
+          typingUsers.value = rest;
+        }, TYPING_DISPLAY_MS);
         return;
       }
 
@@ -118,6 +155,17 @@ export const useChatStore = defineStore('chat', () => {
     if (usersMap.value[id]) usersMap.value[id].unread = 0;
   }
 
+  // Throttled rather than sent on every keystroke -- the backend rebroadcasts
+  // every signal verbatim (see dispatchTyping in backend/chat.go), so an
+  // unthrottled caller would put one WS message per keystroke on the wire.
+  function notifyTyping() {
+    if (!activeUser.value) return;
+    const now = Date.now();
+    if (now - lastTypingSentAt < TYPING_SEND_THROTTLE_MS) return;
+    lastTypingSentAt = now;
+    sendRaw({ type: 'typing', to: activeUser.value });
+  }
+
   function send(content: string): boolean {
     if (!activeUser.value) return false;
     const to = activeUser.value;
@@ -145,6 +193,7 @@ export const useChatStore = defineStore('chat', () => {
     chats,
     activeUser,
     admins,
+    typingUsers,
     users,
     totalUnread,
     isClosed,
@@ -154,5 +203,6 @@ export const useChatStore = defineStore('chat', () => {
     disconnect,
     selectUser,
     send,
+    notifyTyping,
   };
 });

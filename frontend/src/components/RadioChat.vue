@@ -16,11 +16,16 @@
       </template>
     </div>
 
+    <div class="text-caption text-medium-emphasis mt-1" style="height: 1.2em">
+      <span v-if="radioTyping">Radio is typing...</span>
+    </div>
+
     <v-text-field
       v-model="input"
       class="mt-2"
       :disabled="isClosed"
       placeholder="Type your message..."
+      @input="notifyTyping"
       @keydown.enter="sendMessage"
     />
 
@@ -36,11 +41,30 @@ import { useChatNotifications } from '@/composables/useChatNotifications';
 import { useChatSocket } from '@/composables/useChatSocket';
 import { useGewisAuth } from '@/composables/useGewisAuth';
 
-type Incoming = { content: string };
+type ChatIncoming = { content: string };
+// The backend's Chat.dispatchTyping sends this to a listener when a radio
+// is typing back to them, under the generic "radio" identity (see
+// backend/chat.go) -- no `from`/`to` needed on this side, since a listener
+// only ever has one counterparty.
+type TypingIncoming = { type: 'typing' };
+type Incoming = ChatIncoming | TypingIncoming;
+
+function isTypingMessage(msg: Incoming): msg is TypingIncoming {
+  return (msg as TypingIncoming).type === 'typing';
+}
+
+// Mirrors the admin-side chat store's own typing constants (see
+// stores/chat.ts) -- how long the indicator stays lit after the last
+// signal, and how often notifyTyping() actually sends one while typing.
+const TYPING_DISPLAY_MS = 3000;
+const TYPING_SEND_THROTTLE_MS = 2000;
 
 const input = ref('');
 const messages = ref<{ from: string; content: string }[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
+const radioTyping = ref(false);
+let radioTypingTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTypingSentAt = 0;
 
 const { getToken } = useGewisAuth();
 const { notify } = useChatNotifications();
@@ -50,11 +74,27 @@ const { isClosed, connect, disconnect, send } = useChatSocket<Incoming>({
   getToken: () => getToken(),
   buildHandshake: (token) => ({ token }),
   onMessage: (msg) => {
+    if (isTypingMessage(msg)) {
+      radioTyping.value = true;
+      if (radioTypingTimer) clearTimeout(radioTypingTimer);
+      radioTypingTimer = setTimeout(() => {
+        radioTyping.value = false;
+      }, TYPING_DISPLAY_MS);
+      return;
+    }
+
     messages.value.push({ from: 'radio', content: msg.content });
     notify('Radio', msg.content);
     scrollToBottom();
   },
 });
+
+function notifyTyping() {
+  const now = Date.now();
+  if (now - lastTypingSentAt < TYPING_SEND_THROTTLE_MS) return;
+  lastTypingSentAt = now;
+  send({ type: 'typing' });
+}
 
 function sendMessage() {
   if (!input.value.trim() || isClosed.value) return;
@@ -75,5 +115,8 @@ function scrollToBottom() {
 }
 
 onMounted(connect);
-onBeforeUnmount(disconnect);
+onBeforeUnmount(() => {
+  disconnect();
+  if (radioTypingTimer) clearTimeout(radioTypingTimer);
+});
 </script>
