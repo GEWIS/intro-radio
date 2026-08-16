@@ -14,6 +14,7 @@ declare module 'vue' {
     AppFooter: typeof import('./components/AppFooter.vue')['default']
     AudioStream: typeof import('./components/AudioStream.vue')['default']
     Credits: typeof import('./components/Credits.vue')['default']
+    HealthHistoryStrip: typeof import('./components/HealthHistoryStrip.vue')['default']
     IconColorPicker: typeof import('./components/IconColorPicker.vue')['default']
     Landing: typeof import('./components/Landing.vue')['default']
     PrivacyPolicy: typeof import('./components/PrivacyPolicy.vue')['default']

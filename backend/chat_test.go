@@ -103,6 +103,13 @@ func TestUserToRadioForwarding(t *testing.T) {
 	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
 
+	// radio's own connect fires a presence broadcast (naming just itself);
+	// drain it before the chat-forwarding assertion below, since that's not
+	// what this test is checking.
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read initial presence: %v", err)
+	}
+
 	user := dialAndHandshake(t, wsBase, "user", userTok, "")
 	defer user.Close()
 
@@ -139,8 +146,24 @@ func TestRadioToUserForwarding(t *testing.T) {
 	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
 
+	// radio's own connect fires a presence broadcast naming just itself.
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read initial presence: %v", err)
+	}
+
 	otherRadio := dialAndHandshake(t, wsBase, "radio", otherRadioTok, RADIOChatKey)
 	defer otherRadio.Close()
+
+	// otherRadio connecting triggers an updated (2-admin) broadcast to both
+	// radios; drain radio's copy and otherRadio's own-connect copy so the
+	// chat-forwarding assertions below read the actual chat messages, not
+	// these presence updates.
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read updated presence: %v", err)
+	}
+	if _, err := readJSONWithDeadline[PresenceMessage](t, otherRadio, 2*time.Second); err != nil {
+		t.Fatalf("otherRadio read initial presence: %v", err)
+	}
 
 	// Give the server a moment to finish registering all three connections;
 	// otherwise the mirror below can race the otherRadio handshake and never
@@ -462,6 +485,61 @@ func TestMalformedJSONHandshakeCloses(t *testing.T) {
 	}
 }
 
+func TestPresenceBroadcastOnConnectAndDisconnect(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	radio1Tok := makeToken(t, GEWISSecret, 11111, "Alice", "Admin", time.Minute)
+	radio2Tok := makeToken(t, GEWISSecret, 22222, "Bob", "Admin", time.Minute)
+
+	radio1 := dialAndHandshake(t, wsBase, "radio", radio1Tok, RADIOChatKey)
+	defer radio1.Close()
+
+	// radio1's own connect triggers a presence broadcast naming just itself.
+	presence1, err := readJSONWithDeadline[PresenceMessage](t, radio1, 2*time.Second)
+	if err != nil {
+		t.Fatalf("radio1 read initial presence: %v", err)
+	}
+	if presence1.Type != "presence" || len(presence1.Admins) != 1 || presence1.Admins[0].ID != "11111" {
+		t.Fatalf("unexpected initial presence: %+v", presence1)
+	}
+
+	radio2 := dialAndHandshake(t, wsBase, "radio", radio2Tok, RADIOChatKey)
+	defer radio2.Close()
+
+	// Both radios should now see an updated list of 2.
+	presence1b, err := readJSONWithDeadline[PresenceMessage](t, radio1, 2*time.Second)
+	if err != nil {
+		t.Fatalf("radio1 read updated presence: %v", err)
+	}
+	if len(presence1b.Admins) != 2 {
+		t.Fatalf("expected radio1 to see 2 admins, got: %+v", presence1b)
+	}
+
+	presence2, err := readJSONWithDeadline[PresenceMessage](t, radio2, 2*time.Second)
+	if err != nil {
+		t.Fatalf("radio2 read initial presence: %v", err)
+	}
+	if len(presence2.Admins) != 2 {
+		t.Fatalf("expected radio2 to see 2 admins, got: %+v", presence2)
+	}
+
+	radio2.Close()
+
+	// radio1 should see the list shrink back to 1 once radio2 disconnects.
+	presence1c, err := readJSONWithDeadline[PresenceMessage](t, radio1, 2*time.Second)
+	if err != nil {
+		t.Fatalf("radio1 read presence after radio2 disconnect: %v", err)
+	}
+	if len(presence1c.Admins) != 1 || presence1c.Admins[0].ID != "11111" {
+		t.Fatalf("expected radio1 to see just itself after radio2 disconnected, got: %+v", presence1c)
+	}
+}
+
 func TestShutdownClosesConnectedClients(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "ChangeMe"
@@ -477,6 +555,13 @@ func TestShutdownClosesConnectedClients(t *testing.T) {
 	defer user.Close()
 	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
 	defer radio.Close()
+
+	// Drain radio's own-connect presence broadcast so the close-frame
+	// assertion below observes the actual shutdown close, not this
+	// unrelated message.
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read initial presence: %v", err)
+	}
 
 	// Give the server a moment to finish registering both connections
 	// before triggering shutdown.
