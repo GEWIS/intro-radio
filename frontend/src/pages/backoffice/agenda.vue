@@ -47,7 +47,8 @@
 
 <script setup lang="ts">
 import type { AgendaEvent } from '@/stores/app';
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 import AdminKeyGate from '@/components/AdminKeyGate.vue';
 import AgendaEditor from '@/components/AgendaEditor.vue';
 import { useAdminGate } from '@/composables/useAdminGate';
@@ -94,6 +95,40 @@ async function load() {
 }
 
 onMounted(load);
+
+// Losing in-progress agenda edits is exactly the kind of mistake this guard
+// exists to prevent -- "Save changes" only appears once the editor is
+// dirty (see the template above), so there was previously nothing stopping
+// an admin from clicking "Back to chat"/"Dashboard" (an in-app route
+// change) or closing the tab and silently discarding everything.
+function hasUnsavedChanges() {
+  return editorRef.value?.editor.isDirty.value ?? false;
+}
+
+function confirmDiscard() {
+  return window.confirm('You have unsaved agenda changes. Leave without saving?');
+}
+
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (!hasUnsavedChanges()) return;
+  // Both of these are required for browsers to actually show their native
+  // "leave site?" prompt; the string assigned to returnValue is ignored by
+  // every modern browser (each shows its own fixed wording) but some older
+  // engines historically displayed it, so it's set for completeness.
+  e.preventDefault();
+  e.returnValue = '';
+}
+
+onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload));
+onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload));
+
+// Covers in-app navigation (the "Back to chat"/"Dashboard" router-links
+// above) -- beforeunload above only fires on a real page unload (tab
+// close, refresh, typing a new URL), not on a client-side route change.
+onBeforeRouteLeave(() => {
+  if (!hasUnsavedChanges()) return true;
+  return confirmDiscard();
+});
 
 async function save() {
   if (!editorRef.value) return;
