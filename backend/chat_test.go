@@ -540,6 +540,83 @@ func TestPresenceBroadcastOnConnectAndDisconnect(t *testing.T) {
 	}
 }
 
+func TestTypingBroadcastFromUserToRadios(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	userTok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
+	radioTok := makeToken(t, GEWISSecret, 99999, "Bob", "Radio", time.Minute)
+
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
+	defer radio.Close()
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read initial presence: %v", err)
+	}
+
+	user := dialAndHandshake(t, wsBase, "user", userTok, "")
+	defer user.Close()
+
+	msg := IncomingMessage{Token: userTok, Type: "typing"}
+	if err := user.WriteJSON(msg); err != nil {
+		t.Fatalf("user write typing: %v", err)
+	}
+
+	out, err := readJSONWithDeadline[TypingMessage](t, radio, 2*time.Second)
+	if err != nil {
+		t.Fatalf("radio read typing: %v", err)
+	}
+	if out.Type != "typing" || out.From != "12345" || out.To != "" {
+		t.Fatalf("unexpected typing message: %+v", out)
+	}
+}
+
+func TestTypingFromRadioReachesOnlyTargetUserUnderGenericIdentity(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "ChangeMe"
+	chat := NewChat()
+
+	srv, wsBase := startTestServer(t, chat)
+	defer srv.Close()
+
+	userTok := makeToken(t, GEWISSecret, 22222, "Carol", "User", time.Minute)
+	otherUserTok := makeToken(t, GEWISSecret, 33333, "Dave", "User", time.Minute)
+	radioTok := makeToken(t, GEWISSecret, 44444, "Erin", "Radio", time.Minute)
+
+	user := dialAndHandshake(t, wsBase, "user", userTok, "")
+	defer user.Close()
+	otherUser := dialAndHandshake(t, wsBase, "user", otherUserTok, "")
+	defer otherUser.Close()
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
+	defer radio.Close()
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, 2*time.Second); err != nil {
+		t.Fatalf("radio read initial presence: %v", err)
+	}
+
+	msg := IncomingMessage{Token: radioTok, To: "22222", Type: "typing"}
+	if err := radio.WriteJSON(msg); err != nil {
+		t.Fatalf("radio write typing: %v", err)
+	}
+
+	out, err := readJSONWithDeadline[TypingMessage](t, user, 2*time.Second)
+	if err != nil {
+		t.Fatalf("user read typing: %v", err)
+	}
+	// The listener must see the generic "radio" identity, never the real
+	// staff member behind it -- same rule dispatch's real messages follow.
+	if out.Type != "typing" || out.From != "radio" || out.To != "22222" {
+		t.Fatalf("unexpected typing message to user: %+v", out)
+	}
+
+	// otherUser (not the target) must not receive it.
+	if _, err := readJSONWithDeadline[TypingMessage](t, otherUser, 200*time.Millisecond); err == nil {
+		t.Fatal("expected no typing message for a non-target user")
+	}
+}
+
 func TestShutdownClosesConnectedClients(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "ChangeMe"

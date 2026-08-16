@@ -52,6 +52,7 @@ type IncomingMessage struct {
 	To       string `json:"to,omitempty"`       // target user id when role=radio
 	Content  string `json:"content"`            // message body
 	RadioKey string `json:"radioKey,omitempty"` // required in handshake when role=radio
+	Type     string `json:"type,omitempty"`     // "" for a regular chat message, or "typing"
 }
 
 type OutgoingMessage struct {
@@ -77,6 +78,17 @@ type PresenceAdmin struct {
 type PresenceMessage struct {
 	Type   string          `json:"type"` // always "presence"
 	Admins []PresenceAdmin `json:"admins"`
+}
+
+// TypingMessage is a best-effort, ephemeral "someone is typing" signal --
+// unlike OutgoingMessage, losing one to a failed write is not worth
+// tearing down the connection over (see dispatchTyping's forwarding
+// helpers, which skip the usual remove-on-error bookkeeping for exactly
+// that reason). From/To carry the same meaning as IncomingMessage's.
+type TypingMessage struct {
+	Type string `json:"type"` // always "typing"
+	From string `json:"from"`
+	To   string `json:"to,omitempty"`
 }
 
 type GEWISClaims struct {
@@ -307,6 +319,11 @@ func (c *Chat) handleClient(client *Client) {
 }
 
 func (c *Chat) dispatch(client *Client, in IncomingMessage) {
+	if in.Type == "typing" {
+		c.dispatchTyping(client, in)
+		return
+	}
+
 	if client.role == "user" {
 		// User messages go to all radios; staff seeing the listener's real
 		// identity here is intentional.
@@ -341,6 +358,50 @@ func (c *Chat) dispatch(client *Client, in IncomingMessage) {
 		To:         in.To,
 		Content:    in.Content,
 	})
+}
+
+// dispatchTyping mirrors dispatch's role split, but for the ephemeral
+// "typing" signal rather than a real chat message: a listener typing is
+// broadcast to every radio (staff seeing which listener is about to send
+// something is the whole point), while a radio typing back is delivered to
+// just that one listener -- under the same generic "radio" identity
+// dispatch's real messages use, so a listener can never learn which staff
+// member is composing a reply.
+func (c *Chat) dispatchTyping(client *Client, in IncomingMessage) {
+	if client.role == "user" {
+		c.broadcastTyping(TypingMessage{Type: "typing", From: client.id})
+		return
+	}
+
+	if in.To == "" {
+		return
+	}
+	c.forwardTypingToUser(in.To, TypingMessage{Type: "typing", From: "radio", To: in.To})
+}
+
+// broadcastTyping and forwardTypingToUser deliberately skip the
+// remove-on-write-error bookkeeping forwardToRadios/forwardToUser do: a
+// typing signal that fails to send just means one missed "typing..."
+// flicker, not a message a user is waiting on, so it isn't worth tearing
+// down a connection over -- the next real message or ping will surface a
+// genuinely dead connection soon enough.
+func (c *Chat) broadcastTyping(msg TypingMessage) {
+	data, _ := json.Marshal(msg)
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	for r := range c.radios {
+		_ = r.writeMessage(websocket.TextMessage, data)
+	}
+}
+
+func (c *Chat) forwardTypingToUser(userID string, msg TypingMessage) {
+	data, _ := json.Marshal(msg)
+	c.mutex.Lock()
+	user, ok := c.users[userID]
+	c.mutex.Unlock()
+	if ok {
+		_ = user.writeMessage(websocket.TextMessage, data)
+	}
 }
 
 // Shutdown closes every currently connected client with a "going away"

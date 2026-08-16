@@ -186,7 +186,7 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 // newMux wires up all HTTP and WebSocket routes on a fresh ServeMux, rather
 // than registering on http.DefaultServeMux, so it can be constructed
 // independently in tests.
-func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLog) *http.ServeMux {
+func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLog, startedAt time.Time) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", chat.HandleWS)
 	mux.HandleFunc("/api/v1/health", healthHandler)
@@ -207,6 +207,9 @@ func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLo
 	mux.HandleFunc("/api/v1/live-status", func(w http.ResponseWriter, r *http.Request) {
 		liveStatusHandler(chat, audioURL, audioMountPoint, w, r)
 	})
+	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		statusHandler(chat, metrics, startedAt, audioURL, audioMountPoint, w, r)
+	})
 	return mux
 }
 
@@ -224,6 +227,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 }
 
 func main() {
+	startedAt := time.Now()
 	chat := NewChat()
 
 	// Set the log level before loading the agenda, so the agenda's own
@@ -266,7 +270,7 @@ func main() {
 		log.Warn().Err(err).Str("path", auditLogFile).Msg("could not load audit log; starting with an empty log")
 	}
 
-	srv := newHTTPServer(port, newMux(chat, agenda, metrics, auditLog))
+	srv := newHTTPServer(port, newMux(chat, agenda, metrics, auditLog, startedAt))
 
 	// metricsDone stops MetricsStore.Run's ticker loop; it is closed
 	// alongside chat.Shutdown() below so the sampling goroutine doesn't
