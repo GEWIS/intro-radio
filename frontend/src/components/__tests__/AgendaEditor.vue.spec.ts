@@ -98,4 +98,78 @@ describe('AgendaEditor', () => {
     await deleteBtn.trigger('click'); // confirmed
     expect(wrapper.text()).not.toContain('Removable');
   });
+
+  it('groups events under one day header per distinct date, in list order', () => {
+    const wrapper = mountWithVuetify(AgendaEditor, {
+      props: {
+        initial: [
+          makeEvent('Morning show', '2026-01-01'),
+          makeEvent('Evening show', '2026-01-01'),
+          makeEvent('Next day show', '2026-01-02'),
+        ],
+      },
+    });
+
+    // Two distinct dates -> exactly two day headers, not one per event --
+    // proves same-day events share a header instead of getting one each.
+    // (The header's exact localized text depends on ICU data that may not
+    // be available in every test environment, so this checks the *count*
+    // rather than asserting specific "januari"/weekday wording.)
+    expect(wrapper.findAll('.agenda-day-header')).toHaveLength(2);
+
+    const text = wrapper.text();
+    expect(text.indexOf('Morning show')).toBeLessThan(text.indexOf('Next day show'));
+    expect(text.indexOf('Evening show')).toBeLessThan(text.indexOf('Next day show'));
+  });
+
+  it('shows every card\'s own background color, not just the expanded one', () => {
+    const wrapper = mountWithVuetify(AgendaEditor, {
+      props: { initial: [{ ...makeEvent('First', '2026-01-01'), color: '#ff00ff', colorDark: '#000000' }] },
+    });
+
+    const card = wrapper.find('.agenda-card');
+    // jsdom normalizes an inline hex background to its rgb() equivalent.
+    expect(card.attributes('style')).toContain('rgb(255, 0, 255)');
+  });
+
+  it('edits date and time through native date/time inputs, keeping the "H:MM - H:MM" storage shape', async () => {
+    const wrapper = mountWithVuetify(AgendaEditor, {
+      props: { initial: [makeEvent('First', '2026-01-01', '9:00 - 10:00')] },
+    });
+
+    await pencilButtons(wrapper)[0].trigger('click');
+
+    const dateInput = wrapper.get('input[type="date"]');
+    expect((dateInput.element as HTMLInputElement).value).toBe('2026-01-01');
+
+    // A native time input silently blanks itself on a non-zero-padded hour
+    // ("9:00"), so these must come back zero-padded even though the
+    // underlying stored value ("9:00 - 10:00") isn't.
+    const timeInputs = wrapper.findAll('input[type="time"]');
+    expect(timeInputs).toHaveLength(2);
+    expect((timeInputs[0].element as HTMLInputElement).value).toBe('09:00');
+    expect((timeInputs[1].element as HTMLInputElement).value).toBe('10:00');
+
+    await timeInputs[0].setValue('09:30');
+    // Re-querying after the update reflects the same underlying event object
+    // AgendaEditor tracks by reference -- there is no separate "commit" step.
+    expect((wrapper.findAll('input[type="time"]')[0].element as HTMLInputElement).value).toBe('09:30');
+  });
+
+  it('shows an inline "Required" message for a blank title, which clears once filled in', async () => {
+    const wrapper = mountWithVuetify(AgendaEditor, { props: { initial: [] } });
+
+    await wrapper.get('button').trigger('click'); // "Add event" on an empty list
+    const titleInput = wrapper.get('input');
+    // Vuetify only validates on a real focus-then-blur transition, not on
+    // blur alone (it tracks the field's own isFocused state internally).
+    await titleInput.trigger('focus');
+    await titleInput.trigger('blur');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('Required');
+
+    await titleInput.setValue('Now titled');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).not.toContain('Required');
+  });
 });
