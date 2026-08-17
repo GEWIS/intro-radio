@@ -39,7 +39,7 @@ It is designed to pair with a WebSocket-capable frontend; [GEWIS/radioweb](https
 
 | Variable                  | Default                                                                        | Description                                                                                     |
 |----------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| `PORT`                    | `:8080`                                                                        | Address/port the HTTP and WebSocket server listens on.                                          |
+| `PORT`                    | `:8080`                                                                        | Address/port the HTTP and WebSocket server listens on. A bare port number (e.g. `3000`) is accepted and gets a leading colon added automatically. |
 | `GEWIS_SECRET`            | `ChangeMe`                                                                     | HMAC secret used to verify the HS512-signed JWT presented at WebSocket handshake.                |
 | `RADIO_CHAT_KEY`          | `ChangeMe`                                                                     | Shared key that `role=radio` connections must present as `radioKey` in the handshake.           |
 | `ALLOWED_ORIGINS`         | `https://radio.gewis.nl,http://localhost:3000`                                | Comma-separated list of `Origin` header values accepted for WebSocket handshakes.               |

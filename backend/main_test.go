@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -416,6 +417,48 @@ func TestNewMuxRoutesRegistered(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: expected status 200, got %d", path, rec.Code)
 		}
+	}
+}
+
+// TestNormalizePort covers PORT being set to a bare number, which is the
+// convention on Heroku, Render, Railway, Cloud Run, and this repo's own
+// browser-preview tooling -- net.Listen requires "host:port", so a bare
+// number must gain a leading colon. Already-valid forms must pass through
+// unchanged.
+func TestNormalizePort(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bare number gets a leading colon", "3000", ":3000"},
+		{"default already has a colon", ":8080", ":8080"},
+		{"explicit host:port passes through", "127.0.0.1:3000", "127.0.0.1:3000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizePort(tt.in); got != tt.want {
+				t.Fatalf("normalizePort(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNormalizePortResolvesToListenableAddress proves normalizePort's
+// output is actually usable, rather than just shaped correctly: both a
+// bare-number PORT and a host:port PORT must resolve to an address
+// net.Listen (and so http.Server.ListenAndServe) can bind.
+func TestNormalizePortResolvesToListenableAddress(t *testing.T) {
+	for _, in := range []string{"0", "127.0.0.1:0"} {
+		t.Run(in, func(t *testing.T) {
+			addr := normalizePort(in)
+			ln, err := net.Listen("tcp", addr)
+			if err != nil {
+				t.Fatalf("net.Listen(%q): %v", addr, err)
+			}
+			ln.Close()
+		})
 	}
 }
 
