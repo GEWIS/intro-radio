@@ -79,7 +79,19 @@
                 <!-- Message body -->
                 <div class="flex-grow-1">
                   <strong>[{{ messageLabel(m) }}]</strong>
-                  <span class="ml-2">{{ m.content }}</span>
+
+                  <img
+                    v-if="m.media_id && mediaUrls[m.media_id]"
+                    alt="Attachment"
+                    class="ml-2"
+                    :src="mediaUrls[m.media_id]"
+                    style="max-width: 160px; max-height: 160px; display: inline-block; vertical-align: middle; cursor: pointer"
+                    @click="openFullSize(mediaUrls[m.media_id])"
+                  />
+
+                  <span v-else-if="m.media_id" class="ml-2 text-medium-emphasis">Loading attachment...</span>
+
+                  <span v-else class="ml-2">{{ m.content }}</span>
                 </div>
               </div>
             </template>
@@ -112,6 +124,10 @@
       </v-col>
     </v-row>
 
+    <v-dialog v-model="dialogOpen" max-width="90vw">
+      <img v-if="typeof fullSizeUrl === 'string'" alt="Attachment" :src="fullSizeUrl" style="max-width: 100%; display: block" />
+    </v-dialog>
+
     <v-snackbar v-model="showReconnected" color="success" timeout="3000">Reconnected</v-snackbar>
   </v-card>
 </template>
@@ -119,9 +135,10 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useGewisAuth } from '@/composables/useGewisAuth';
 import { useChatStore } from '@/stores/chat';
 
-type ChatMessage = { from: string; to?: string; content: string; given_name?: string; family_name?: string; ts: number };
+type ChatMessage = { from: string; to?: string; content: string; given_name?: string; family_name?: string; ts: number; media_id?: string; media_kind?: string };
 
 const props = defineProps<{
   radioKey: string;
@@ -129,6 +146,10 @@ const props = defineProps<{
 
 const chatStore = useChatStore();
 const { isClosed, connecting, users, activeUser, usersMap, chats, admins, typingUsers } = storeToRefs(chatStore);
+
+const { getToken } = useGewisAuth();
+const mediaUrls = ref<Record<string, string>>({});
+const fullSizeUrl = ref<string | false>(false);
 
 const input = ref('');
 const messagesBox = ref<HTMLDivElement | null>(null);
@@ -155,6 +176,12 @@ const activeUserTitle = computed(() => {
   const u = usersMap.value[activeUser.value];
   if (!u) return activeUser.value;
   return `${u.givenName} ${u.familyName} (${u.id})`;
+});
+const dialogOpen = computed({
+  get: () => typeof fullSizeUrl.value === 'string',
+  set: (val: boolean) => {
+    if (!val) fullSizeUrl.value = false;
+  },
 });
 
 function formatLast(ts: number) {
@@ -198,11 +225,48 @@ function send() {
   input.value = '';
 }
 
+function openFullSize(url: string) {
+  fullSizeUrl.value = url;
+}
+
+async function fetchMediaUrl(mediaId: string) {
+  if (mediaUrls.value[mediaId]) return;
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const res = await fetch('/api/v1/media/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, radioKey: props.radioKey, id: mediaId }),
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    mediaUrls.value = { ...mediaUrls.value, [mediaId]: URL.createObjectURL(blob) };
+  } catch {
+    // A failed fetch just leaves "Loading attachment..." on screen -- the
+    // next watch trigger (e.g. reselecting the thread) will retry.
+  }
+}
+
 // Covers every way activeMessages can change -- a new message arriving over
 // the socket (including while a different backoffice page had it open),
 // send()'s own local echo, and switching to a different user's thread --
 // without each of those call sites needing its own explicit scroll call.
 watch(activeMessages, scrollToBottom, { flush: 'post' });
+
+// Fetches the blob for every media message currently in view, whenever the
+// active thread's messages change (new message arrives, or a different
+// user is selected).
+watch(
+  activeMessages,
+  (msgs) => {
+    for (const m of msgs) {
+      if (m.media_id) fetchMediaUrl(m.media_id);
+    }
+  },
+  { immediate: true },
+);
 
 // Alt+Up/Down cycles through unread conversations without touching the
 // mouse -- Alt- rather than a bare arrow key, since a bare arrow needs to
