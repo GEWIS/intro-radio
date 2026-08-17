@@ -5,6 +5,7 @@ import AudioStream from '@/components/AudioStream.vue';
 import Landing from '@/components/Landing.vue';
 import RadioChat from '@/components/RadioChat.vue';
 import RequestSong from '@/components/RequestSong.vue';
+import SegmentSuggestion from '@/components/SegmentSuggestion.vue';
 import UpcomingEvents from '@/components/UpcomingEvents.vue';
 import VideoStream from '@/components/VideoStream.vue';
 import { useAppStore } from '@/stores/app';
@@ -18,7 +19,7 @@ vi.mock('@/composables/useGewisAuth', () => ({
   useGewisAuth: () => ({ ensureToken: ensureTokenMock, getToken: getTokenMock }),
 }));
 
-// Landing.vue never imports these five itself -- unplugin-vue-components
+// Landing.vue never imports these six itself -- unplugin-vue-components
 // auto-registers them by filename -- so this string-keyed `stubs` map only
 // works because Vue's <script setup> compiler still stamps a `__name` on
 // each component (derived from its filename) that Vue Test Utils' stub
@@ -33,6 +34,7 @@ const CHILD_STUBS = {
   UpcomingEvents: true,
   RadioChat: true,
   RequestSong: true,
+  SegmentSuggestion: true,
 };
 
 // Landing renders two real (unstubbed) <v-img>s (the logo, and the GEWIS
@@ -93,6 +95,7 @@ describe('Landing', () => {
     expect(wrapper.findComponent(VideoStream).exists()).toBe(false);
     expect(wrapper.findComponent(RadioChat).exists()).toBe(false);
     expect(wrapper.findComponent(RequestSong).exists()).toBe(false);
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Start a chat with the radio');
   });
 
@@ -110,6 +113,7 @@ describe('Landing', () => {
     expect(wrapper.text()).not.toContain('Going live in:');
     expect(wrapper.findComponent(AudioStream).exists()).toBe(true);
     expect(wrapper.findComponent(RequestSong).exists()).toBe(true);
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
   });
 
   it('hides the video until AudioStream reports the radio is live, then shows it', async () => {
