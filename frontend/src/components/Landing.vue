@@ -125,6 +125,7 @@
     </div>
 
     <RequestSong v-if="isStarted" />
+    <SegmentSuggestion v-if="isStarted" />
 
     <v-snackbar v-model="linkCopied" timeout="2500">Link copied to clipboard</v-snackbar>
   </v-container>

@@ -22,6 +22,7 @@ declare module 'vue' {
     RequestSong: typeof import('./components/RequestSong.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SegmentSuggestion: typeof import('./components/SegmentSuggestion.vue')['default']
     UpcomingEvents: typeof import('./components/UpcomingEvents.vue')['default']
     VideoStream: typeof import('./components/VideoStream.vue')['default']
   }
