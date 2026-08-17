@@ -78,7 +78,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useGewisAuth } from '@/composables/useGewisAuth';
 
-const { ensureToken } = useGewisAuth();
+const { ensureToken, getToken } = useGewisAuth();
 
 const expanded = ref(false);
 const kind = ref<'photo' | 'voice'>('photo');
@@ -96,8 +96,18 @@ const recordedUrl = ref<string | null>(null);
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: Blob[] = [];
 
-function toggle() {
-  expanded.value = !expanded.value;
+// Checking here, not in send(), means a logged-out (or expired-token)
+// listener gets sent to log in before typing anything -- never after
+// filling in a caption or recording a voice memo, where ensureToken()'s
+// redirect would otherwise throw that work away.
+async function toggle() {
+  if (expanded.value) {
+    expanded.value = false;
+    return;
+  }
+
+  const token = await ensureToken();
+  if (token) expanded.value = true;
 }
 
 function onFileSelected(e: Event) {
@@ -156,13 +166,15 @@ const canSend = computed(() => {
 async function send() {
   if (!canSend.value) return;
 
-  // ensureToken() (same composable Landing.vue's own startChatFlow uses)
-  // handles the login redirect itself and resolves null if the user is
-  // mid-redirect or declined -- that path already has an implicit
-  // user-facing reason, so bail out silently only there. Unlike getToken(),
-  // this also recovers a token that expired while this card sat open.
-  const token = await ensureToken();
-  if (!token) return;
+  // toggle() already made sure there was a token before this card could
+  // even open -- this is just a safety net for one that expired while it
+  // sat open. Plain getToken() on purpose, not ensureToken(): redirecting
+  // away now would discard whatever the user just captured.
+  const token = getToken();
+  if (!token) {
+    errorMessage.value = 'Your session expired. Collapse and reopen this card to log in again.';
+    return;
+  }
 
   sent.value = false;
   errorMessage.value = null;
