@@ -10,6 +10,7 @@
         <router-link to="/backoffice">Back to chat</router-link>
         <router-link to="/backoffice/agenda">Manage agenda</router-link>
         <router-link to="/backoffice/dashboard">Dashboard</router-link>
+        <router-link to="/backoffice/media">Media</router-link>
       </div>
 
       <AdminKeyGate v-if="gate.stage.value !== 'ready'" :gate="gate" />

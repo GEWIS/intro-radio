@@ -13,6 +13,7 @@
           <router-link to="/backoffice/agenda">Manage agenda</router-link>
           <router-link to="/backoffice/dashboard">Dashboard</router-link>
           <router-link to="/backoffice/status">Status</router-link>
+          <router-link to="/backoffice/media">Media</router-link>
         </div>
 
         <AdminChat :radio-key="gate.radioKey.value!" />
