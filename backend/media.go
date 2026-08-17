@@ -393,3 +393,156 @@ func mediaUploadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(item)
 }
+
+// MediaIDRequest is the shared {token, radioKey, id} shape for
+// download/delete. Mirrors RadioKeyValidateRequest's own {token, radioKey}
+// (defined in main.go), extended with the one field each of these needs.
+type MediaIDRequest struct {
+	Token    string `json:"token"`
+	RadioKey string `json:"radioKey"`
+	ID       string `json:"id"`
+}
+
+// MediaWipeRequest is {token, radioKey, ids} for the bulk-delete endpoint.
+// IDs is required and must be non-empty -- the frontend already knows
+// exactly which segment_suggestion ids are in view (see dashboard.vue's
+// existing day-filtering, mirrored by the new Media tab), so there is no
+// ambiguous "ids omitted means everything" case to support here.
+type MediaWipeRequest struct {
+	Token    string   `json:"token"`
+	RadioKey string   `json:"radioKey"`
+	IDs      []string `json:"ids"`
+}
+
+func decodeAndAuthorize(chat *Chat, w http.ResponseWriter, r *http.Request, req any) bool {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return false
+	}
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// mediaListHandler backs POST /api/v1/media/list: every segment_suggestion
+// item, oldest first (List()'s own order) -- the Media tab groups these by
+// day itself (mirroring dashboard.vue's existing pattern), so no server-side
+// filtering beyond purpose is needed.
+func mediaListHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r *http.Request) {
+	var req RadioKeyValidateRequest
+	if !decodeAndAuthorize(chat, w, r, &req) {
+		return
+	}
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+
+	all := store.List()
+	suggestions := make([]MediaItem, 0, len(all))
+	for _, item := range all {
+		if item.Purpose == MediaPurposeSegmentSuggestion {
+			suggestions = append(suggestions, item)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(suggestions)
+}
+
+// mediaDownloadHandler backs POST /api/v1/media/download: streams the raw
+// bytes for one item with its stored MimeType, used for both inline
+// playback (fetched, wrapped in a Blob/ObjectURL client-side) and the
+// explicit download button (same fetch; the button saves the blob it
+// already has).
+func mediaDownloadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r *http.Request) {
+	var req MediaIDRequest
+	if !decodeAndAuthorize(chat, w, r, &req) {
+		return
+	}
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+
+	item, ok := store.Get(req.ID)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	data, err := store.ReadBytes(req.ID)
+	if err != nil {
+		http.Error(w, "could not read media file", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", item.MimeType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename=%q`, req.ID))
+	_, _ = w.Write(data)
+}
+
+// mediaDeleteHandler backs POST /api/v1/media/delete: removes one item
+// (either purpose is allowed here -- unlike wipe, a single explicit delete
+// by id is an intentional, individually-reviewed action, so there is no
+// need to protect chat_attachment items from it) and tells other connected
+// admins to refetch.
+func mediaDeleteHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r *http.Request) {
+	var req MediaIDRequest
+	if !decodeAndAuthorize(chat, w, r, &req) {
+		return
+	}
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+
+	if err := store.Delete(req.ID); err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	chat.broadcastMediaEvent(MediaBroadcast{Type: "media", Event: "deleted", ID: req.ID})
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]bool{"deleted": true})
+}
+
+// mediaWipeHandler backs POST /api/v1/media/wipe: bulk-deletes the given
+// ids, but silently protects any chat_attachment item among them --
+// segment_suggestion's manual-only retention is a deliberate policy choice
+// (see the design spec), and a bulk action is exactly the kind of place a
+// stray id could slip in by accident.
+func mediaWipeHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r *http.Request) {
+	var req MediaWipeRequest
+	if !decodeAndAuthorize(chat, w, r, &req) {
+		return
+	}
+	if !chat.VerifyRadioKey(req.Token, req.RadioKey) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(RadioKeyValidateResponse{Valid: false})
+		return
+	}
+	if len(req.IDs) == 0 {
+		http.Error(w, "ids must be non-empty", http.StatusBadRequest)
+		return
+	}
+
+	suggestionIDs := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if item, ok := store.Get(id); ok && item.Purpose == MediaPurposeSegmentSuggestion {
+			suggestionIDs = append(suggestionIDs, id)
+		}
+	}
+
+	removed := store.DeleteMany(suggestionIDs)
+	for _, id := range removed {
+		chat.broadcastMediaEvent(MediaBroadcast{Type: "media", Event: "deleted", ID: id})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"deleted": removed})
+}

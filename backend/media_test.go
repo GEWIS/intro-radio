@@ -412,3 +412,182 @@ func TestMediaUploadHandlerChatAttachmentBroadcastsOnlyToRadios(t *testing.T) {
 		t.Fatalf("expected the real sender identity on the radio-facing copy, got %+v", msg)
 	}
 }
+
+type mediaIDRequest struct {
+	Token    string   `json:"token"`
+	RadioKey string   `json:"radioKey"`
+	ID       string   `json:"id,omitempty"`
+	IDs      []string `json:"ids,omitempty"`
+}
+
+func TestMediaListHandlerReturnsOnlySegmentSuggestions(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	must(t, store.Add(MediaItem{ID: "a", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("1")))
+	must(t, store.Add(MediaItem{ID: "b", Purpose: MediaPurposeChatAttachment, CreatedAt: time.Now()}, []byte("2")))
+
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/list", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaListHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var got []MediaItem
+	must(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	if len(got) != 1 || got[0].ID != "a" {
+		t.Fatalf("expected only the segment_suggestion item, got %+v", got)
+	}
+}
+
+func TestMediaListHandlerRejectsBadRadioKey(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "wrong-key"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/list", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaListHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestMediaDownloadHandlerReturnsBytesAndContentType(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	must(t, store.Add(MediaItem{ID: "a", Purpose: MediaPurposeSegmentSuggestion, MimeType: "image/jpeg", CreatedAt: time.Now()}, []byte("jpeg-bytes")))
+
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", ID: "a"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/download", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaDownloadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("expected Content-Type image/jpeg, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Body.String() != "jpeg-bytes" {
+		t.Fatalf("expected the raw bytes back, got %q", rec.Body.String())
+	}
+}
+
+func TestMediaDownloadHandlerUnknownIDReturns404(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", ID: "does-not-exist"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/download", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaDownloadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestMediaDeleteHandlerRemovesItemAndBroadcasts(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	must(t, store.Add(MediaItem{ID: "a", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("1")))
+
+	_, wsBase := startTestServer(t, chat)
+	radioTok := makeToken(t, GEWISSecret, 9, "Staff", "Member", time.Minute)
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
+	defer radio.Close()
+
+	// Drain the initial presence message that arrives when the radio connects
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, time.Second); err != nil {
+		t.Fatalf("expected initial presence message: %v", err)
+	}
+
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", ID: "a"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/delete", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaDeleteHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := store.Get("a"); ok {
+		t.Fatalf("expected the item to be deleted")
+	}
+
+	got, err := readJSONWithDeadline[MediaBroadcast](t, radio, time.Second)
+	if err != nil {
+		t.Fatalf("expected a broadcast, got: %v", err)
+	}
+	if got.Event != "deleted" || got.ID != "a" {
+		t.Fatalf("expected a deleted event for id a, got %+v", got)
+	}
+}
+
+func TestMediaWipeHandlerDeletesOnlyGivenIDsAndNeverChatAttachments(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	must(t, store.Add(MediaItem{ID: "a", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("1")))
+	must(t, store.Add(MediaItem{ID: "b", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("2")))
+	must(t, store.Add(MediaItem{ID: "c", Purpose: MediaPurposeChatAttachment, CreatedAt: time.Now()}, []byte("3")))
+
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	// Ask to wipe a, plus c (a chat_attachment) -- c must survive regardless.
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", IDs: []string{"a", "c"}})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/wipe", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaWipeHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := store.Get("a"); ok {
+		t.Fatalf("expected a to be deleted")
+	}
+	if _, ok := store.Get("b"); !ok {
+		t.Fatalf("expected b to survive (not in the ids list)")
+	}
+	if _, ok := store.Get("c"); !ok {
+		t.Fatalf("expected c (a chat_attachment) to survive even though it was in the ids list")
+	}
+}
+
+func TestMediaWipeHandlerRejectsEmptyIDs(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", IDs: []string{}})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/wipe", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaWipeHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an empty ids list, got %d", rec.Code)
+	}
+}
