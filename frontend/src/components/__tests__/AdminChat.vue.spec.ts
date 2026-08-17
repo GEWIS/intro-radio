@@ -405,4 +405,20 @@ describe('AdminChat', () => {
 
     expect(sendMock).toHaveBeenCalledWith({ type: 'typing', to: 'u1' });
   });
+
+  it('renders a chat attachment message as an image instead of text', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['x'], { type: 'image/jpeg' }) }));
+
+    const wrapper = mountAdminChat();
+    onMessageHolder.current!(incoming({ from: 'u1', content: '', media_id: 'abc', media_kind: 'photo', given_name: 'Ada', family_name: 'Lovelace' }));
+    await wrapper.vm.$nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wrapper.vm.$nextTick();
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/media/download',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: 'tok', radioKey: 'key', id: 'abc' }) }),
+    );
+    expect(wrapper.find('img').exists()).toBe(true);
+  });
 });
