@@ -10,11 +10,12 @@ import RadioChat from '@/components/RadioChat.vue';
 import { __isClosed as isClosedRef } from '@/composables/useChatSocket';
 import { mountWithVuetify } from '@/test-utils';
 
-const { connectMock, disconnectMock, sendMock, onMessageHolder } = vi.hoisted(() => ({
+const { connectMock, disconnectMock, sendMock, onMessageHolder, ensureTokenMock } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   disconnectMock: vi.fn(),
   sendMock: vi.fn().mockReturnValue(true),
   onMessageHolder: { current: null as ((msg: { content: string }) => void) | null },
+  ensureTokenMock: vi.fn(),
 }));
 
 vi.mock('@/composables/useChatSocket', async () => {
@@ -33,7 +34,7 @@ vi.mock('@/composables/useChatSocket', async () => {
   };
 });
 vi.mock('@/composables/useGewisAuth', () => ({
-  useGewisAuth: () => ({ getToken: () => 'tok' }),
+  useGewisAuth: () => ({ ensureToken: ensureTokenMock, getToken: () => 'tok' }),
 }));
 
 describe('RadioChat', () => {
@@ -41,6 +42,7 @@ describe('RadioChat', () => {
     connectMock.mockClear();
     disconnectMock.mockClear();
     sendMock.mockClear().mockReturnValue(true);
+    ensureTokenMock.mockReset().mockResolvedValue('tok');
     isClosedRef.value = false;
   });
 
@@ -145,6 +147,8 @@ describe('RadioChat', () => {
 
 describe('RadioChat attachments', () => {
   beforeEach(() => {
+    ensureTokenMock.mockReset().mockResolvedValue('tok');
+
     // The attach v-btn now binds :loading="uploading" (the I1 in-flight-
     // indicator fix) -- once uploading flips true, Vuetify's VProgressCircular
     // loading overlay measures itself via ResizeObserver, a real browser API
@@ -188,6 +192,23 @@ describe('RadioChat attachments', () => {
     Object.defineProperty(fileInput.element, 'files', { value: [] });
     await fileInput.trigger('change');
 
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('calls ensureToken (rather than silently returning) when there is no stored token', async () => {
+    ensureTokenMock.mockReset().mockResolvedValue(null);
+    vi.stubGlobal('fetch', vi.fn());
+
+    const wrapper = mountWithVuetify(RadioChat);
+    const fileInput = wrapper.get('input[type="file"]');
+    const file = new File(['fake-image-bytes'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(fileInput.element, 'files', { value: [file] });
+    await fileInput.trigger('change');
+    await flushPromises();
+
+    expect(ensureTokenMock).toHaveBeenCalledTimes(1);
+    // ensureToken resolving null means an auth redirect is already in progress
+    // (or was declined) -- either way there is nothing left for this upload to do.
     expect(fetch).not.toHaveBeenCalled();
   });
 
