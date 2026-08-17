@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,7 +39,7 @@ type AgendaPutRequest struct {
 }
 
 var (
-	port            = String("PORT", ":8080")
+	port            = normalizePort(String("PORT", ":8080"))
 	videoURL        = String("RADIO_VIDEO_URL", "https://hd-auth.skylinewebcams.com/live.m3u8?a=2j5v70ov5ng6jq544ji0u6kjh3")
 	audioURL        = String("RADIO_AUDIO_URL", "https://bata-radio.snt.utwente.nl")
 	audioMountPoint = String("RADIO_AUDIO_MOUNT_POINT", "/high")
@@ -46,6 +47,21 @@ var (
 	token           = String("RADIO_GEWIS_TOKEN", "gewis-radio")
 	logLevel        = String("LOG_LEVEL", "trace")
 )
+
+// normalizePort accounts for PORT being set to a bare number such as
+// "3000" -- the convention on Heroku, Render, Railway, Cloud Run, and this
+// repo's own browser-preview tooling. net.Listen (and so
+// http.Server.ListenAndServe, called on port below) requires the
+// "host:port" form; a bare number fails to bind with "missing port in
+// address". Prepending a colon fixes that, while the default ":8080" and
+// any explicit "host:port" value already have one and pass through
+// unchanged.
+func normalizePort(p string) string {
+	if strings.Contains(p, ":") {
+		return p
+	}
+	return ":" + p
+}
 
 // HTTP server timeouts. These only govern the plain HTTP request/response
 // cycle: once a request is upgraded to a WebSocket, net/http hijacks the
