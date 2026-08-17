@@ -88,7 +88,7 @@ const uploadError = ref<string | null>(null);
 let radioTypingTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTypingSentAt = 0;
 
-const { getToken } = useGewisAuth();
+const { ensureToken, getToken } = useGewisAuth();
 const { notify } = useChatNotifications();
 
 const { isClosed, connect, disconnect, send } = useChatSocket<Incoming>({
@@ -122,7 +122,10 @@ async function onFileSelected(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
-  const token = getToken();
+  // ensureToken() (same one Landing.vue's startChatFlow uses) recovers a
+  // token that expired while this chat sat open, instead of just failing
+  // silently the way a bare getToken() would.
+  const token = await ensureToken();
   if (!token) return;
 
   uploadError.value = null;
