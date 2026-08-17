@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -183,9 +184,28 @@ type icecastSource struct {
 // live on the Icecast server and an array when several are -- that quirk
 // is Icecast's, not ours, so both shapes are tried here exactly as
 // findMatchingSource does in JavaScript.
+// icecastSchemePattern detects a baseURL that already has a scheme, so
+// normalizeIcecastBaseURL doesn't double-prefix one. Mirrors
+// normalizeIcecastBaseUrl in frontend/src/composables/useIcecastLiveStatus.ts.
+var icecastSchemePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z\d+\-.]*://`)
+
+// normalizeIcecastBaseURL defaults to https:// when baseURL has no scheme.
+// main.go documents RADIO_AUDIO_URL as sometimes being configured that way
+// (e.g. "bata-radio.snt.utwente.nl" with no scheme) -- without this, Go's
+// http.Client rejects the request outright with "unsupported protocol
+// scheme", which the frontend's own normalization (applied before this
+// backend code existed) never had to contend with.
+func normalizeIcecastBaseURL(baseURL string) string {
+	trimmed := strings.TrimRight(baseURL, "/")
+	if icecastSchemePattern.MatchString(trimmed) {
+		return trimmed
+	}
+	return "https://" + trimmed
+}
+
 func fetchListenerCount(baseURL, mountPoint string) (int, error) {
 	client := http.Client{Timeout: statusFetchTimeout}
-	resp, err := client.Get(strings.TrimRight(baseURL, "/") + "/status-json.xsl")
+	resp, err := client.Get(normalizeIcecastBaseURL(baseURL) + "/status-json.xsl")
 	if err != nil {
 		return 0, fmt.Errorf("fetching status-json.xsl: %w", err)
 	}

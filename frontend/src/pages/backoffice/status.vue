@@ -37,7 +37,13 @@
               </div>
 
               <div>
-                <div class="text-caption text-medium-emphasis">Connected listeners</div>
+                <!-- "Connected listeners" read as Icecast's audience count to
+                     anyone comparing it against the real stream -- this is
+                     actually just who's connected to our own chat, same
+                     number as the dashboard's "Chatting now", so it gets the
+                     same label rather than implying it's the same thing as
+                     Icecast's listener count. -->
+                <div class="text-caption text-medium-emphasis">Chatting now</div>
                 <div class="text-h6">{{ status.chatListeners }}</div>
               </div>
 

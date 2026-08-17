@@ -154,6 +154,27 @@ func TestFetchListenerCount(t *testing.T) {
 	}
 }
 
+func TestNormalizeIcecastBaseURL(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "no scheme gets https prefixed", input: "bata-radio.snt.utwente.nl", want: "https://bata-radio.snt.utwente.nl"},
+		{name: "trailing slash stripped before checking scheme", input: "bata-radio.snt.utwente.nl/", want: "https://bata-radio.snt.utwente.nl"},
+		{name: "existing https scheme left alone", input: "https://bata-radio.snt.utwente.nl", want: "https://bata-radio.snt.utwente.nl"},
+		{name: "existing http scheme left alone", input: "http://localhost:8000", want: "http://localhost:8000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeIcecastBaseURL(tt.input); got != tt.want {
+				t.Fatalf("normalizeIcecastBaseURL(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFetchListenerCountFailsOnRequestError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
