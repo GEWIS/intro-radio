@@ -216,6 +216,32 @@ func must(t *testing.T, err error) {
 
 func makeUploadRequest(t *testing.T, fields map[string]string, fileField, fileName string, fileContent []byte) *http.Request {
 	t.Helper()
+	// Determine MIME type based on file extension
+	mimeType := "application/octet-stream"
+	if strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".jpeg") {
+		mimeType = "image/jpeg"
+	} else if strings.HasSuffix(fileName, ".png") {
+		mimeType = "image/png"
+	} else if strings.HasSuffix(fileName, ".webp") {
+		mimeType = "image/webp"
+	} else if strings.HasSuffix(fileName, ".webm") {
+		mimeType = "audio/webm"
+	} else if strings.HasSuffix(fileName, ".ogg") {
+		mimeType = "audio/ogg"
+	} else if strings.HasSuffix(fileName, ".mp3") {
+		mimeType = "audio/mpeg"
+	}
+	return makeUploadRequestWithContentType(t, fields, fileField, fileName, fileContent, mimeType)
+}
+
+// makeUploadRequestWithContentType is makeUploadRequest but with an explicit
+// Content-Type for the file part instead of one derived from fileName's
+// extension -- needed to exercise a MIME type that carries a codecs=
+// parameter (e.g. "audio/webm;codecs=opus", what a real browser's
+// MediaRecorder.mimeType actually produces), which no fileName extension
+// maps to.
+func makeUploadRequestWithContentType(t *testing.T, fields map[string]string, fileField, fileName string, fileContent []byte, contentType string) *http.Request {
+	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for k, v := range fields {
@@ -224,26 +250,9 @@ func makeUploadRequest(t *testing.T, fields map[string]string, fileField, fileNa
 		}
 	}
 	if fileField != "" {
-		// Determine MIME type based on file extension
-		mimeType := "application/octet-stream"
-		if strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".jpeg") {
-			mimeType = "image/jpeg"
-		} else if strings.HasSuffix(fileName, ".png") {
-			mimeType = "image/png"
-		} else if strings.HasSuffix(fileName, ".webp") {
-			mimeType = "image/webp"
-		} else if strings.HasSuffix(fileName, ".webm") {
-			mimeType = "audio/webm"
-		} else if strings.HasSuffix(fileName, ".ogg") {
-			mimeType = "audio/ogg"
-		} else if strings.HasSuffix(fileName, ".mp3") {
-			mimeType = "audio/mpeg"
-		}
-
-		// Create part with explicit Content-Type
 		header := make(textproto.MIMEHeader)
 		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fileField, fileName))
-		header.Set("Content-Type", mimeType)
+		header.Set("Content-Type", contentType)
 		part, err := writer.CreatePart(header)
 		if err != nil {
 			t.Fatalf("CreatePart: %v", err)
@@ -361,6 +370,96 @@ func TestMediaUploadHandlerRejectsDisallowedMimeType(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for a disallowed file type, got %d", rec.Code)
+	}
+	if len(store.List()) != 0 {
+		t.Fatalf("expected nothing to be stored")
+	}
+}
+
+func TestMediaUploadHandlerAcceptsVoiceMimeTypeWithCodecsParam(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+	// Chrome/Edge's MediaRecorder.mimeType after start() is exactly this --
+	// a codecs= parameter riding along with the base type -- and that full
+	// string lands on the multipart part's Content-Type verbatim (see
+	// SegmentSuggestion.vue's blob construction). Before the C1 fix, the
+	// handler's exact-match lookup never found this in allowedVoiceMimeTypes
+	// and every real voice submission 400ed.
+	req := makeUploadRequestWithContentType(t, map[string]string{
+		"token":   tok,
+		"purpose": MediaPurposeSegmentSuggestion,
+		"kind":    MediaKindVoice,
+	}, "file", "voice-memo.webm", []byte("fake-opus-bytes"), "audio/webm;codecs=opus")
+
+	rec := httptest.NewRecorder()
+	mediaUploadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got MediaItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.MimeType != "audio/webm" {
+		t.Fatalf("expected the codecs param stripped down to the base type audio/webm, got %q", got.MimeType)
+	}
+}
+
+func TestMediaUploadHandlerAcceptsIOSSafariVoiceMimeType(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+	// iOS Safari's MediaRecorder emits audio/mp4, which wasn't in the
+	// allow-list at all (params or not) before the C1 fix.
+	req := makeUploadRequestWithContentType(t, map[string]string{
+		"token":   tok,
+		"purpose": MediaPurposeSegmentSuggestion,
+		"kind":    MediaKindVoice,
+	}, "file", "voice-memo.mp4", []byte("fake-aac-bytes"), "audio/mp4")
+
+	rec := httptest.NewRecorder()
+	mediaUploadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got MediaItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.MimeType != "audio/mp4" {
+		t.Fatalf("expected mime type audio/mp4, got %q", got.MimeType)
+	}
+}
+
+func TestMediaUploadHandlerRejectsMalformedContentType(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+	// A Content-Type mime.ParseMediaType itself can't parse (as opposed to
+	// one it parses fine but that simply isn't on the allow-list) must
+	// still come back as a clean 400, not a panic or 500.
+	req := makeUploadRequestWithContentType(t, map[string]string{
+		"token":   tok,
+		"purpose": MediaPurposeSegmentSuggestion,
+		"kind":    MediaKindPhoto,
+	}, "file", "photo.jpg", []byte("bytes"), "image/jpeg/extra")
+
+	rec := httptest.NewRecorder()
+	mediaUploadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a malformed content type, got %d", rec.Code)
 	}
 	if len(store.List()) != 0 {
 		t.Fatalf("expected nothing to be stored")

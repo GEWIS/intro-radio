@@ -34,14 +34,19 @@
 
       <v-btn
         class="mr-2"
-        :disabled="isClosed"
+        :disabled="isClosed || uploading"
         icon="mdi-image-plus"
+        :loading="uploading"
         variant="text"
         @click="fileInput?.click()"
       />
 
       <input ref="fileInput" accept="image/jpeg,image/png,image/webp" style="display: none" type="file" @change="onFileSelected" />
     </div>
+
+    <v-alert v-if="uploadError" class="mt-2" closable density="compact" type="error" @click:close="uploadError = null">
+      {{ uploadError }}
+    </v-alert>
 
     <v-btn v-if="!isClosed" block class="mt-2" color="primary" @click="sendMessage">Send</v-btn>
     <v-btn v-else block class="mt-2" color="secondary" @click="connect">Reconnect</v-btn>
@@ -78,6 +83,8 @@ const messages = ref<SentMessage[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const radioTyping = ref(false);
+const uploading = ref(false);
+const uploadError = ref<string | null>(null);
 let radioTypingTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTypingSentAt = 0;
 
@@ -118,18 +125,29 @@ async function onFileSelected(e: Event) {
   const token = getToken();
   if (!token) return;
 
-  const form = new FormData();
-  form.append('token', token);
-  form.append('purpose', 'chat_attachment');
-  form.append('kind', 'photo');
-  form.append('file', file);
+  uploadError.value = null;
+  uploading.value = true;
+  try {
+    const form = new FormData();
+    form.append('token', token);
+    form.append('purpose', 'chat_attachment');
+    form.append('kind', 'photo');
+    form.append('file', file);
 
-  const res = await fetch('/api/v1/media', { method: 'POST', body: form });
-  if (!res.ok) return;
+    const res = await fetch('/api/v1/media', { method: 'POST', body: form });
+    if (!res.ok) {
+      uploadError.value = (await res.text()).trim() || `Could not send the attachment (${res.status}).`;
+      return;
+    }
 
-  messages.value.push({ from: 'you', content: '', mediaUrl: URL.createObjectURL(file) });
-  scrollToBottom();
-  if (fileInput.value) fileInput.value.value = '';
+    messages.value.push({ from: 'you', content: '', mediaUrl: URL.createObjectURL(file) });
+    scrollToBottom();
+    if (fileInput.value) fileInput.value.value = '';
+  } catch {
+    uploadError.value = 'Could not reach the server. Please try again.';
+  } finally {
+    uploading.value = false;
+  }
 }
 
 function sendMessage() {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -117,9 +118,15 @@ func (m *MediaStore) Get(id string) (MediaItem, bool) {
 	return MediaItem{}, false
 }
 
-// Add appends item to the index and writes data to disk as its
-// corresponding file. Both happen under the same lock so a concurrent List
-// can never observe metadata for a file that isn't there yet.
+// Add writes data to its own file first -- keyed by item's unique id, so it
+// can't collide with any other write, and so a concurrent List can never
+// observe metadata for a file that isn't there yet -- then appends item to
+// the index and persists it. The index update (the append plus
+// writeJSONFile) holds the lock for its entire sequence, matching
+// agenda.go's Replace, so concurrent callers -- the upload handler, the
+// delete handler, the wipe handler's sequential deletes, and the background
+// sweep -- can never interleave writes to the one shared index file on
+// disk.
 func (m *MediaStore) Add(item MediaItem, data []byte) error {
 	if err := os.MkdirAll(m.mediaDir, 0o755); err != nil {
 		return fmt.Errorf("creating media directory: %w", err)
@@ -128,13 +135,13 @@ func (m *MediaStore) Add(item MediaItem, data []byte) error {
 		return fmt.Errorf("writing media file: %w", err)
 	}
 
+	// Hold the write lock for the entire sequence to prevent concurrent
+	// calls from interfering with each other at the filesystem level.
 	m.mutex.Lock()
-	m.items = append(m.items, item)
-	snapshot := make([]MediaItem, len(m.items))
-	copy(snapshot, m.items)
-	m.mutex.Unlock()
+	defer m.mutex.Unlock()
 
-	return writeJSONFile(m.indexPath, snapshot)
+	m.items = append(m.items, item)
+	return writeJSONFile(m.indexPath, m.items)
 }
 
 // ReadBytes returns the raw file contents for id. Returns an error if id is
@@ -166,7 +173,11 @@ func (m *MediaStore) ReadBytes(id string) ([]byte, error) {
 // missing file is not an error -- the metadata is still removed either way,
 // so a prior partial failure can't leave an item permanently stuck.
 func (m *MediaStore) Delete(id string) error {
+	// Hold the write lock for the entire sequence to prevent concurrent
+	// calls from interfering with each other at the filesystem level.
 	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	kept := make([]MediaItem, 0, len(m.items))
 	found := false
 	for _, item := range m.items {
@@ -177,9 +188,6 @@ func (m *MediaStore) Delete(id string) error {
 		kept = append(kept, item)
 	}
 	m.items = kept
-	snapshot := make([]MediaItem, len(kept))
-	copy(snapshot, kept)
-	m.mutex.Unlock()
 
 	if !found {
 		return fmt.Errorf("no media item with id %q", id)
@@ -188,7 +196,7 @@ func (m *MediaStore) Delete(id string) error {
 	if err := os.Remove(m.filePath(id)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing media file: %w", err)
 	}
-	return writeJSONFile(m.indexPath, snapshot)
+	return writeJSONFile(m.indexPath, m.items)
 }
 
 // DeleteMany deletes every id in ids that actually exists, ignoring ids
@@ -278,6 +286,7 @@ var allowedVoiceMimeTypes = map[string]bool{
 	"audio/webm": true,
 	"audio/ogg":  true,
 	"audio/mpeg": true,
+	"audio/mp4":  true,
 }
 
 // MediaBroadcast notifies connected radios that a segment_suggestion item
@@ -348,7 +357,19 @@ func mediaUploadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r 
 	}
 	defer file.Close()
 
-	mimeType := header.Header.Get("Content-Type")
+	// MediaRecorder.mimeType in a real browser carries a codecs parameter
+	// (e.g. "audio/webm;codecs=opus" in Chrome/Edge, an Ogg/Opus type with
+	// its own codecs= in Firefox), and that full string lands on this
+	// part's Content-Type verbatim. ParseMediaType strips params down to
+	// the base type before the allow-list lookup below, so a recorded
+	// voice memo actually matches instead of 400ing on every real browser.
+	// A malformed header (rare, but possible from a hand-crafted request)
+	// is rejected the same way an unrecognized type is: 400, not a panic.
+	mimeType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("malformed content type %q", header.Header.Get("Content-Type")), http.StatusBadRequest)
+		return
+	}
 	maxBytes := int64(maxPhotoBytes)
 	allowed := allowedPhotoMimeTypes
 	if kind == MediaKindVoice {

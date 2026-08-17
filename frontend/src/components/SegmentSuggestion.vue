@@ -68,22 +68,24 @@
         </v-card-actions>
 
         <v-alert v-if="sent" class="mx-4 mb-4" density="compact" type="success">Sent!</v-alert>
+        <v-alert v-if="errorMessage" class="mx-4 mb-4" density="compact" type="error">{{ errorMessage }}</v-alert>
       </div>
     </v-expand-transition>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useGewisAuth } from '@/composables/useGewisAuth';
 
-const { getToken } = useGewisAuth();
+const { ensureToken } = useGewisAuth();
 
 const expanded = ref(false);
 const kind = ref<'photo' | 'voice'>('photo');
 const caption = ref('');
 const sending = ref(false);
 const sent = ref(false);
+const errorMessage = ref<string | null>(null);
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File | null>(null);
@@ -129,15 +131,41 @@ function discardRecording() {
   recordingState.value = 'idle';
 }
 
+// Collapsing the card (the v-if="expanded" block above) only removes this
+// markup from the DOM -- it does not unmount SegmentSuggestion itself, so
+// nothing would otherwise stop a still-running recording's microphone
+// stream if the user collapses the card mid-recording instead of pressing
+// Stop. stopRecording() calls mediaRecorder?.stop(), which triggers the
+// existing onstop handler above (the only place that stops the stream's
+// tracks) -- both new triggers below just need to invoke it, not duplicate
+// its cleanup.
+watch(expanded, (isExpanded) => {
+  if (!isExpanded && recordingState.value === 'recording') stopRecording();
+});
+
+onBeforeUnmount(() => {
+  if (recordingState.value === 'recording') stopRecording();
+  if (recordedUrl.value) URL.revokeObjectURL(recordedUrl.value);
+});
+
 const canSend = computed(() => {
   if (kind.value === 'photo') return selectedFile.value !== null;
   return recordedBlob.value !== null;
 });
 
 async function send() {
-  const token = getToken();
-  if (!token || !canSend.value) return;
+  if (!canSend.value) return;
 
+  // ensureToken() (same composable Landing.vue's own startChatFlow uses)
+  // handles the login redirect itself and resolves null if the user is
+  // mid-redirect or declined -- that path already has an implicit
+  // user-facing reason, so bail out silently only there. Unlike getToken(),
+  // this also recovers a token that expired while this card sat open.
+  const token = await ensureToken();
+  if (!token) return;
+
+  sent.value = false;
+  errorMessage.value = null;
   sending.value = true;
   try {
     const form = new FormData();
@@ -155,13 +183,19 @@ async function send() {
     }
 
     const res = await fetch('/api/v1/media', { method: 'POST', body: form });
-    if (!res.ok) return;
+    if (!res.ok) {
+      errorMessage.value = (await res.text()).trim() || `Could not send (${res.status}).`;
+      return;
+    }
 
     sent.value = true;
+    errorMessage.value = null;
     selectedFile.value = null;
     if (fileInput.value) fileInput.value.value = '';
     discardRecording();
     caption.value = '';
+  } catch {
+    errorMessage.value = 'Could not reach the server. Please try again.';
   } finally {
     sending.value = false;
   }
