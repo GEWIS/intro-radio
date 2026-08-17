@@ -25,8 +25,9 @@ func TestServerTimeoutsDoNotKillWebSocket(t *testing.T) {
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
 	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
 	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
+	media := NewMediaStore(filepath.Join(t.TempDir(), "media.json"), filepath.Join(t.TempDir(), "media"))
 
-	ts := httptest.NewUnstartedServer(newMux(chat, agenda, metrics, auditLog, time.Now()))
+	ts := httptest.NewUnstartedServer(newMux(chat, agenda, metrics, auditLog, media, time.Now()))
 	ts.Config.ReadHeaderTimeout = 50 * time.Millisecond
 	ts.Config.ReadTimeout = 50 * time.Millisecond
 	ts.Config.WriteTimeout = 50 * time.Millisecond
@@ -214,7 +215,8 @@ func TestRadioKeyValidateRouteRegistered(t *testing.T) {
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
 	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
 	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
-	mux := newMux(chat, agenda, metrics, auditLog, time.Now())
+	media := NewMediaStore(filepath.Join(t.TempDir(), "media.json"), filepath.Join(t.TempDir(), "media"))
+	mux := newMux(chat, agenda, metrics, auditLog, media, time.Now())
 
 	tok := makeToken(t, GEWISSecret, 12345, "Alice", "User", time.Minute)
 	body, err := json.Marshal(RadioKeyValidateRequest{Token: tok, RadioKey: "correct-key"})
@@ -408,7 +410,8 @@ func TestNewMuxRoutesRegistered(t *testing.T) {
 	agenda := NewAgenda(filepath.Join(t.TempDir(), "agenda.json"))
 	metrics := NewMetricsStore(filepath.Join(t.TempDir(), "metrics.json"))
 	auditLog := NewAuditLog(filepath.Join(t.TempDir(), "audit-log.json"))
-	mux := newMux(chat, agenda, metrics, auditLog, time.Now())
+	media := NewMediaStore(filepath.Join(t.TempDir(), "media.json"), filepath.Join(t.TempDir(), "media"))
+	mux := newMux(chat, agenda, metrics, auditLog, media, time.Now())
 
 	for _, path := range []string{"/api/v1/health", "/api/v1/token", "/api/v1/radio", "/api/v1/agenda"} {
 		rec := httptest.NewRecorder()
