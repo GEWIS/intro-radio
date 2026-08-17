@@ -61,6 +61,16 @@ type OutgoingMessage struct {
 	FamilyName string `json:"family_name,omitempty"`
 	To         string `json:"to,omitempty"`
 	Content    string `json:"content"`
+	// MediaID/MediaKind are set instead of Content when this message is a
+	// chat_attachment (see media.go) -- reusing this struct (rather than a
+	// parallel shape) means a media message flows through the exact same
+	// forwardToRadios/forwardToOtherRadios/forwardToUser paths a text
+	// message does, inheriting the identity handling already enforced
+	// there for free. Named with the same snake_case as given_name/
+	// family_name above for consistency within this one struct, even
+	// though newer REST response structs elsewhere use camelCase.
+	MediaID   string `json:"media_id,omitempty"`
+	MediaKind string `json:"media_kind,omitempty"`
 }
 
 // PresenceAdmin is one entry in a PresenceMessage's Admins list.
