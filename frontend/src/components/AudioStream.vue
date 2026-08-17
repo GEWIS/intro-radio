@@ -9,9 +9,8 @@
 
     <v-card
       v-ripple
-      class="py-4"
+      class="py-6"
       color="primary"
-      :prepend-icon="isPlaying ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'"
       role="button"
       rounded="lg"
       tabindex="0"
@@ -19,8 +18,12 @@
       @keydown.enter.prevent="toggle"
       @keydown.space.prevent="toggle"
     >
+      <template #prepend>
+        <v-icon :icon="isPlaying ? 'mdi-stop-circle-outline' : 'mdi-play-circle-outline'" size="56" />
+      </template>
+
       <template #title>
-        <h2 class="text-h5 font-weight-bold">
+        <h2 class="text-h4 font-weight-bold">
           {{ promptText }}
         </h2>
       </template>
@@ -206,13 +209,15 @@ onUnmounted(clearPlaybackTimers);
 .audio-level {
   display: inline-flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 14px;
+  gap: 3px;
+  height: 18px;
 }
 
+/* Taller swing (5px-18px, up from 4px-14px) so the pulse actually reads at
+   a glance instead of looking like a static row of dashes. */
 .audio-level__bar {
-  width: 3px;
-  height: 4px;
+  width: 4px;
+  height: 5px;
   background: currentColor;
   border-radius: 1px;
   animation: audio-level-bounce 1s ease-in-out infinite;
@@ -234,17 +239,17 @@ onUnmounted(clearPlaybackTimers);
 @keyframes audio-level-bounce {
   0%,
   100% {
-    height: 4px;
+    height: 5px;
   }
   50% {
-    height: 14px;
+    height: 18px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .audio-level__bar {
     animation: none;
-    height: 8px;
+    height: 11px;
   }
 }
 </style>
