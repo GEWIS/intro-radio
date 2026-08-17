@@ -3,10 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 // MediaItem is one uploaded photo or voice memo. Purpose discriminates the
@@ -239,4 +246,150 @@ func (m *MediaStore) RunSweep(done <-chan struct{}) {
 			return
 		}
 	}
+}
+
+const (
+	maxPhotoBytes = 15 * 1024 * 1024 // 15MB
+	maxVoiceBytes = 10 * 1024 * 1024 // 10MB
+	// maxUploadBytes bounds the request body http.MaxBytesReader allows
+	// before either per-kind check below even runs -- the larger of the two
+	// kind-specific caps, so a legitimate large photo isn't rejected by the
+	// generic reader before reaching the kind-specific message.
+	maxUploadBytes = maxPhotoBytes
+)
+
+var allowedPhotoMimeTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+}
+
+var allowedVoiceMimeTypes = map[string]bool{
+	"audio/webm": true,
+	"audio/ogg":  true,
+	"audio/mpeg": true,
+}
+
+// MediaBroadcast notifies connected radios that a segment_suggestion item
+// was created or deleted, purely so the Media tab knows to refetch its
+// list. Follows the same Type-discriminated pattern as PresenceMessage/
+// TypingMessage in chat.go: a distinct shape on the same socket, not a
+// message belonging to any listener thread, so it is never sent via
+// forwardToUser.
+type MediaBroadcast struct {
+	Type  string `json:"type"` // always "media"
+	Event string `json:"event"` // "new" | "deleted"
+	ID    string `json:"id"`
+	Kind  string `json:"kind,omitempty"` // present on "new"
+}
+
+// broadcastMediaEvent mirrors forwardToRadios' loop, defined here rather
+// than in chat.go so this feature's code stays in one file -- Go methods
+// don't need to live in the same file as their receiver's type definition.
+func (c *Chat) broadcastMediaEvent(msg MediaBroadcast) {
+	data, _ := json.Marshal(msg)
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	for r := range c.radios {
+		if err := r.writeMessage(websocket.TextMessage, data); err != nil {
+			_ = r.conn.Close()
+			delete(c.radios, r)
+		}
+	}
+}
+
+// mediaUploadHandler backs POST /api/v1/media. Auth is the GEWIS token
+// only (no radio key) -- both a chat attachment and a segment suggestion
+// are listener-submitted, mirroring how the chat WebSocket's role=user
+// handshake needs only that same token.
+func mediaUploadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
+		return
+	}
+
+	claims, err := chat.verifyGEWISTokenHandshake(r.FormValue("token"))
+	if err != nil || !lidnrValid(claims) {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	purpose := r.FormValue("purpose")
+	kind := r.FormValue("kind")
+	if purpose != MediaPurposeChatAttachment && purpose != MediaPurposeSegmentSuggestion {
+		http.Error(w, "invalid purpose", http.StatusBadRequest)
+		return
+	}
+	if kind != MediaKindPhoto && kind != MediaKindVoice {
+		http.Error(w, "invalid kind", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	mimeType := header.Header.Get("Content-Type")
+	maxBytes := int64(maxPhotoBytes)
+	allowed := allowedPhotoMimeTypes
+	if kind == MediaKindVoice {
+		maxBytes = maxVoiceBytes
+		allowed = allowedVoiceMimeTypes
+	}
+	if !allowed[mimeType] {
+		http.Error(w, fmt.Sprintf("unsupported content type %q for kind %q", mimeType, kind), http.StatusBadRequest)
+		return
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "could not read upload", http.StatusBadRequest)
+		return
+	}
+	if int64(len(data)) > maxBytes {
+		http.Error(w, fmt.Sprintf("file exceeds the %d byte limit for kind %q", maxBytes, kind), http.StatusBadRequest)
+		return
+	}
+
+	item := MediaItem{
+		ID:               uuid.NewString(),
+		Purpose:          purpose,
+		Kind:             kind,
+		SenderLidnr:      claims.Lidnr,
+		SenderGivenName:  claims.GivenName,
+		SenderFamilyName: claims.FamilyName,
+		Caption:          strings.TrimSpace(r.FormValue("caption")),
+		MimeType:         mimeType,
+		SizeBytes:        int64(len(data)),
+		CreatedAt:        time.Now(),
+	}
+
+	if err := store.Add(item, data); err != nil {
+		http.Error(w, "could not save upload", http.StatusInternalServerError)
+		return
+	}
+
+	if purpose == MediaPurposeChatAttachment {
+		chat.forwardToRadios(OutgoingMessage{
+			From:       strconv.Itoa(item.SenderLidnr), // OutgoingMessage.From is always the lidnr as a string -- see dispatch()'s own `From: client.id`, where client.id is strconv.Itoa(claims.Lidnr)
+			GivenName:  item.SenderGivenName,
+			FamilyName: item.SenderFamilyName,
+			MediaID:    item.ID,
+			MediaKind:  item.Kind,
+		})
+	} else {
+		chat.broadcastMediaEvent(MediaBroadcast{Type: "media", Event: "new", ID: item.ID, Kind: item.Kind})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(item)
 }
