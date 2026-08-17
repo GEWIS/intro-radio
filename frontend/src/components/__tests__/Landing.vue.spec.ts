@@ -116,6 +116,28 @@ describe('Landing', () => {
     expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
   });
 
+  it('hides the segment suggestion once the radio goes live, even at night', async () => {
+    // beforeEach's system time (2026-01-01T00:00:00Z) is night in every
+    // timezone this suite runs under, so it's already showing pre-assertion.
+    const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', true);
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(false);
+
+    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', false);
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
+  });
+
+  it('hides the segment suggestion during the day, even though the radio is not live', () => {
+    // 13:00 UTC is safely inside 09:00-21:00 local under any timezone this
+    // suite plausibly runs in (UTC or Europe/Amsterdam).
+    vi.setSystemTime(new Date('2026-01-02T13:00:00Z'));
+    const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
+
+    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(false);
+  });
+
   it('hides the video until AudioStream reports the radio is live, then shows it', async () => {
     const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
     expect(wrapper.findComponent(VideoStream).exists()).toBe(false);
