@@ -51,7 +51,7 @@
         </div>
       </template>
 
-      <template v-if="isPlaying" #append>
+      <template v-if="isPlaying && !isMobile" #append>
         <div class="d-flex align-center ga-2" style="width: 120px" @click.stop @keydown.enter.stop @keydown.space.stop>
           <v-icon size="small">{{ volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high' }}</v-icon>
 
@@ -72,8 +72,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, toRef, watch } from 'vue';
 import { findMatchingSource, useIcecastLiveStatus } from '@/composables/useIcecastLiveStatus';
+import { useIsMobile } from '@/composables/useIsMobile';
 
 const props = defineProps<{
   baseUrl: string;
@@ -104,16 +104,27 @@ const errorMessage = ref<string | null>(null);
 let statsInterval: number | null = null;
 let switchInterval: number | null = null;
 
+const { isMobile } = useIsMobile();
+
 const VOLUME_STORAGE_KEY = 'RADIO_VOLUME';
 // Persisted across visits, same reasoning as useAdminGate's stored radio
 // key -- a listener who turns the volume down once shouldn't have to redo
 // it every time they open the page. Falls back to full volume rather than
 // silence on a corrupt/out-of-range stored value.
 function loadStoredVolume(): number {
-  const raw = Number(localStorage.getItem(VOLUME_STORAGE_KEY));
+  // Number(null) -- the no-value-stored-yet case -- is 0, which would pass
+  // the range check below and start first-time visitors muted. Treat "no
+  // usable string" as full volume before coercing.
+  const stored = localStorage.getItem(VOLUME_STORAGE_KEY);
+  if (stored === null || stored === '') return 1;
+  const raw = Number(stored);
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
 }
-const volume = ref(loadStoredVolume());
+// Mobile browsers (iOS most notably) ignore element.volume -- the hardware
+// buttons are the only volume control -- so the slider is hidden there and
+// volume stays pinned to full. The stored preference is neither read nor
+// overwritten, keeping a later desktop visit's setting intact.
+const volume = ref(isMobile.value ? 1 : loadStoredVolume());
 watch(volume, (v) => {
   if (audio.value) audio.value.volume = v;
   localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
