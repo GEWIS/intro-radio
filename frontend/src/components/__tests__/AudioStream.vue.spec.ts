@@ -25,6 +25,12 @@ async function mountAudioStream(props: { baseUrl: string; mountPoint: string }) 
   return wrapper;
 }
 
+function setUserAgent(ua: string) {
+  Object.defineProperty(window.navigator, 'userAgent', { value: ua, configurable: true });
+}
+
+const originalUserAgent = navigator.userAgent;
+
 describe('AudioStream', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -39,6 +45,10 @@ describe('AudioStream', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    // Volume tests stub both; reset so later tests run as desktop with a
+    // clean volume preference.
+    setUserAgent(originalUserAgent);
+    localStorage.removeItem('RADIO_VOLUME');
   });
 
   it('builds the audio src by prepending https:// when baseUrl has no scheme', async () => {
@@ -178,6 +188,46 @@ describe('AudioStream', () => {
     const spaceWrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
     await spaceWrapper.find('[role="button"]').trigger('keydown.space');
     expect(spaceWrapper.text()).toContain('Stop listening');
+  });
+
+  it('shows the volume slider while playing on desktop and applies the stored volume', async () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    localStorage.setItem('RADIO_VOLUME', '0.3');
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    await wrapper.find('[role="button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('.v-slider').exists()).toBe(true);
+    expect(wrapper.find('audio').element.volume).toBe(0.3);
+  });
+
+  it('plays at full volume on desktop when nothing is stored yet (first visit)', async () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    // Regression guard: Number(null) is 0, which passes the 0..1 range
+    // check and used to start first-time visitors muted.
+    localStorage.removeItem('RADIO_VOLUME');
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    await wrapper.find('[role="button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('audio').element.volume).toBe(1);
+  });
+
+  it('hides the volume slider on mobile, plays at full volume, and leaves the stored preference untouched', async () => {
+    setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)');
+    // A stored desktop preference must neither leak into mobile playback...
+    localStorage.setItem('RADIO_VOLUME', '0.3');
+    const wrapper = await mountAudioStream({ baseUrl: 'https://example.com', mountPoint: '/high' });
+
+    await wrapper.find('[role="button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('.v-slider').exists()).toBe(false);
+    expect(wrapper.find('audio').element.volume).toBe(1);
+    // ...nor be overwritten by the mobile visit.
+    expect(localStorage.getItem('RADIO_VOLUME')).toBe('0.3');
   });
 
   it('fetches status-json.xsl from the normalized base URL while playing', async () => {

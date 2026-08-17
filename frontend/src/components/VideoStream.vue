@@ -44,7 +44,8 @@
 
 <script setup lang="ts">
 import Hls from 'hls.js';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
+import { useIsMobile } from '@/composables/useIsMobile';
 import { useVideoHealth } from '@/composables/useVideoHealth';
 
 const props = defineProps<{
@@ -57,9 +58,7 @@ const started = ref(false);
 const hasError = ref(false);
 const { healthy: videoHealthy, start: startHealthCheck, stop: stopHealthCheck } = useVideoHealth(toRef(props, 'src'));
 
-const isMobile = computed(() =>
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
-);
+const { isMobile } = useIsMobile();
 
 let hls: Hls | null = null;
 
