@@ -120,8 +120,24 @@ func (m *MediaStore) Add(item MediaItem, data []byte) error {
 	return writeJSONFile(m.indexPath, snapshot)
 }
 
-// ReadBytes returns the raw file contents for id.
+// ReadBytes returns the raw file contents for id. Returns an error if id is
+// not a known item in the index, preventing path-traversal attacks even if
+// the caller hasn't validated id themselves.
 func (m *MediaStore) ReadBytes(id string) ([]byte, error) {
+	m.mutex.Lock()
+	found := false
+	for _, item := range m.items {
+		if item.ID == id {
+			found = true
+			break
+		}
+	}
+	m.mutex.Unlock()
+
+	if !found {
+		return nil, fmt.Errorf("no media item with id %q", id)
+	}
+
 	data, err := os.ReadFile(m.filePath(id))
 	if err != nil {
 		return nil, fmt.Errorf("reading media file: %w", err)

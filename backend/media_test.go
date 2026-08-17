@@ -179,6 +179,26 @@ func TestSweepExpiredChatAttachmentsOnlyTouchesChatAttachments(t *testing.T) {
 	}
 }
 
+func TestMediaStoreReadBytesRejectsPathTraversal(t *testing.T) {
+	m := newTestMediaStore(t)
+	must(t, m.Add(MediaItem{ID: "legitimate", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("safe")))
+
+	// Attempt to read a non-existent item with path-traversal characters
+	_, err := m.ReadBytes("../../../etc/passwd")
+	if err == nil {
+		t.Fatalf("expected ReadBytes to reject path-traversal id, but it succeeded")
+	}
+
+	// Verify that legitimate reads still work
+	data, err := m.ReadBytes("legitimate")
+	if err != nil {
+		t.Fatalf("ReadBytes legitimate: %v", err)
+	}
+	if string(data) != "safe" {
+		t.Fatalf("got bytes %q, want %q", data, "safe")
+	}
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
