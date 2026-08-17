@@ -591,3 +591,64 @@ func TestMediaWipeHandlerRejectsEmptyIDs(t *testing.T) {
 		t.Fatalf("expected 400 for an empty ids list, got %d", rec.Code)
 	}
 }
+
+func TestMediaWipeHandlerBroadcastsOnlyForDeletedSegmentSuggestions(t *testing.T) {
+	GEWISSecret = "testsecret"
+	RADIOChatKey = "correct-key"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	must(t, store.Add(MediaItem{ID: "seg1", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("1")))
+	must(t, store.Add(MediaItem{ID: "seg2", Purpose: MediaPurposeSegmentSuggestion, CreatedAt: time.Now()}, []byte("2")))
+	must(t, store.Add(MediaItem{ID: "chat1", Purpose: MediaPurposeChatAttachment, CreatedAt: time.Now()}, []byte("3")))
+
+	_, wsBase := startTestServer(t, chat)
+	radioTok := makeToken(t, GEWISSecret, 9, "Staff", "Member", time.Minute)
+	radio := dialAndHandshake(t, wsBase, "radio", radioTok, RADIOChatKey)
+	defer radio.Close()
+
+	// Drain the initial presence message that arrives when the radio connects
+	if _, err := readJSONWithDeadline[PresenceMessage](t, radio, time.Second); err != nil {
+		t.Fatalf("expected initial presence message: %v", err)
+	}
+
+	tok := makeToken(t, GEWISSecret, 1, "A", "B", time.Minute)
+	// Request to wipe seg1, seg2, and chat1 (a chat_attachment)
+	body, _ := json.Marshal(mediaIDRequest{Token: tok, RadioKey: "correct-key", IDs: []string{"seg1", "seg2", "chat1"}})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/media/wipe", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	mediaWipeHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Read the first broadcast - should be for seg1
+	broadcast1, err := readJSONWithDeadline[MediaBroadcast](t, radio, time.Second)
+	if err != nil {
+		t.Fatalf("expected first broadcast, got: %v", err)
+	}
+	if broadcast1.Event != "deleted" || broadcast1.ID != "seg1" {
+		t.Fatalf("expected first broadcast for seg1, got %+v", broadcast1)
+	}
+
+	// Read the second broadcast - should be for seg2
+	broadcast2, err := readJSONWithDeadline[MediaBroadcast](t, radio, time.Second)
+	if err != nil {
+		t.Fatalf("expected second broadcast, got: %v", err)
+	}
+	if broadcast2.Event != "deleted" || broadcast2.ID != "seg2" {
+		t.Fatalf("expected second broadcast for seg2, got %+v", broadcast2)
+	}
+
+	// Verify chat1 was not deleted and no broadcast was sent for it
+	if _, ok := store.Get("chat1"); !ok {
+		t.Fatalf("expected chat1 (a chat_attachment) to survive even though it was in the wipe request")
+	}
+
+	// Try to read a third message - should timeout (no broadcast for chat1)
+	_, err = readJSONWithDeadline[MediaBroadcast](t, radio, 100*time.Millisecond)
+	if err == nil {
+		t.Fatalf("expected no third broadcast for the protected chat_attachment, but got one")
+	}
+}
