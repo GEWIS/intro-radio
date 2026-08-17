@@ -10,6 +10,8 @@ type Outgoing = {
   content: string;
   given_name?: string;
   family_name?: string;
+  media_id?: string;
+  media_kind?: 'photo' | 'voice';
 };
 export type ChatUser = { id: string; givenName: string; familyName: string; unread: number; lastActivity: number };
 type ChatMessage = Outgoing & { ts: number };
@@ -26,7 +28,13 @@ type PresenceIncoming = { type: 'presence'; admins: PresenceAdmin[] };
 // never set on these, since a listener's typing signal is only ever
 // broadcast to every radio, never addressed to one.
 type TypingIncoming = { type: 'typing'; from: string; to?: string };
-type Incoming = Outgoing | PresenceIncoming | TypingIncoming;
+
+// The backend's mediaUploadHandler/mediaDeleteHandler/mediaWipeHandler send
+// this on the same socket whenever a segment_suggestion item is created or
+// removed (see backend/media.go's MediaBroadcast) -- purely a "refetch your
+// list" signal for the Media tab, never addressed to a specific listener.
+type MediaIncoming = { type: 'media'; event: 'new' | 'deleted'; id: string; kind?: 'photo' | 'voice' };
+type Incoming = Outgoing | PresenceIncoming | TypingIncoming | MediaIncoming;
 
 function isPresenceMessage(msg: Incoming): msg is PresenceIncoming {
   return (msg as PresenceIncoming).type === 'presence';
@@ -34,6 +42,10 @@ function isPresenceMessage(msg: Incoming): msg is PresenceIncoming {
 
 function isTypingMessage(msg: Incoming): msg is TypingIncoming {
   return (msg as TypingIncoming).type === 'typing';
+}
+
+function isMediaMessage(msg: Incoming): msg is MediaIncoming {
+  return (msg as MediaIncoming).type === 'media';
 }
 
 // How long a "typing" indicator stays lit after the last signal from that
@@ -66,6 +78,9 @@ export const useChatStore = defineStore('chat', () => {
   // timer in typingTimers below, so reading it never needs a Date.now()
   // comparison.
   const typingUsers = ref<Record<string, true>>({});
+  // The most recent segment_suggestion create/delete notification -- the
+  // Media tab watches this to know when to refetch, rather than polling.
+  const mediaEvent = ref<{ id: string; event: 'new' | 'deleted' } | null>(null);
 
   let radioKey = '';
   let started = false;
@@ -109,6 +124,11 @@ export const useChatStore = defineStore('chat', () => {
           const { [msg.from]: _dropped, ...rest } = typingUsers.value;
           typingUsers.value = rest;
         }, TYPING_DISPLAY_MS);
+        return;
+      }
+
+      if (isMediaMessage(msg)) {
+        mediaEvent.value = { id: msg.id, event: msg.event };
         return;
       }
 
@@ -194,6 +214,7 @@ export const useChatStore = defineStore('chat', () => {
     activeUser,
     admins,
     typingUsers,
+    mediaEvent,
     users,
     totalUnread,
     isClosed,

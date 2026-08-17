@@ -203,4 +203,33 @@ describe('useChatStore', () => {
     expect(second.users).toHaveLength(2);
     expect(connectMock).toHaveBeenCalledTimes(1); // navigating back doesn't reopen the socket
   });
+
+  it('records a media event and exposes it via mediaEvent', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!({ type: 'media', event: 'new', id: 'abc', kind: 'photo' });
+
+    expect(store.mediaEvent).toEqual({ id: 'abc', event: 'new' });
+  });
+
+  it('does not treat a media event as a chat message', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!({ type: 'media', event: 'new', id: 'abc', kind: 'photo' });
+
+    expect(store.users).toHaveLength(0);
+    expect(store.totalUnread).toBe(0);
+  });
+
+  it('preserves media_id/media_kind on an incoming chat message', () => {
+    const store = useChatStore();
+    store.ensureConnected('key-a');
+
+    onMessageHolder.current!(incoming({ from: 'u1', content: '', media_id: 'xyz', media_kind: 'photo' }));
+
+    expect(store.chats['u1']?.[0]?.media_id).toBe('xyz');
+    expect(store.chats['u1']?.[0]?.media_kind).toBe('photo');
+  });
 });
