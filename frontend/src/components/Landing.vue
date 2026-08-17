@@ -148,11 +148,11 @@ const { isStarted, now, formattedCountdown } = useCountdown(radio.value.startTim
 const chatActive = ref(false);
 const isRadioLive = ref(false);
 
-// "Radio's down for the night" -- the actual motivating scenario for segment
-// suggestions -- means both no live stream and outside broadcast hours, not
-// live status alone: a daytime blip in isRadioLive shouldn't surface this.
+// Gated on clock time alone, not live status -- outside 21:00-09:00 local
+// is "radio's down for the night" regardless of whether a stream happens
+// to be live at that moment.
 const showSegmentSuggestion = computed(() => {
-  if (!isStarted.value || isRadioLive.value) return false;
+  if (!isStarted.value) return false;
   const hour = new Date(now.value).getHours();
   return hour >= 21 || hour < 9;
 });
