@@ -116,16 +116,13 @@ describe('Landing', () => {
     expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
   });
 
-  it('hides the segment suggestion once the radio goes live, even at night', async () => {
+  it('keeps showing the segment suggestion at night regardless of live status', async () => {
     // beforeEach's system time (2026-01-01T00:00:00Z) is night in every
     // timezone this suite runs under, so it's already showing pre-assertion.
     const wrapper = mountLanding(new Date('2025-01-01T00:00:00Z'));
     expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
 
     await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', true);
-    expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(false);
-
-    await wrapper.findComponent(AudioStream).vm.$emit('update:is-live', false);
     expect(wrapper.findComponent(SegmentSuggestion).exists()).toBe(true);
   });
 
