@@ -28,6 +28,10 @@
           </v-card>
         </v-col>
 
+        <v-col v-if="showSegmentSuggestion" cols="12">
+          <SegmentSuggestion />
+        </v-col>
+
         <v-col v-if="isStarted && isRadioLive" cols="12">
           <VideoStream class="mb-8" :src="radio.videoUrl" />
         </v-col>
@@ -125,7 +129,6 @@
     </div>
 
     <RequestSong v-if="isStarted" />
-    <SegmentSuggestion v-if="isStarted" />
 
     <v-snackbar v-model="linkCopied" timeout="2500">Link copied to clipboard</v-snackbar>
   </v-container>
@@ -140,10 +143,19 @@ import { useAppStore } from '@/stores/app.ts';
 const store = useAppStore();
 
 const { radio } = storeToRefs(store);
-const { isStarted, formattedCountdown } = useCountdown(radio.value.startTime);
+const { isStarted, now, formattedCountdown } = useCountdown(radio.value.startTime);
 
 const chatActive = ref(false);
 const isRadioLive = ref(false);
+
+// Gated on clock time alone, not live status -- outside 21:00-09:00 local
+// is "radio's down for the night" regardless of whether a stream happens
+// to be live at that moment.
+const showSegmentSuggestion = computed(() => {
+  if (!isStarted.value) return false;
+  const hour = new Date(now.value).getHours();
+  return hour >= 21 || hour < 9;
+});
 const nowPlaying = ref<string | null>(null);
 useDocumentTitle(isRadioLive, nowPlaying);
 const { ensureToken, getToken } = useGewisAuth();
