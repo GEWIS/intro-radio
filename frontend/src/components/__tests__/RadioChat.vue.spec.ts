@@ -1,3 +1,4 @@
+import { flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RadioChat from '@/components/RadioChat.vue';
 // Import the mocked module's own `__isClosed` export below (see vi.mock) rather than
@@ -143,6 +144,22 @@ describe('RadioChat', () => {
 });
 
 describe('RadioChat attachments', () => {
+  beforeEach(() => {
+    // The attach v-btn now binds :loading="uploading" (the I1 in-flight-
+    // indicator fix) -- once uploading flips true, Vuetify's VProgressCircular
+    // loading overlay measures itself via ResizeObserver, a real browser API
+    // jsdom doesn't implement. Same fix SegmentSuggestion.vue.spec.ts and
+    // AdminKeyGate.vue.spec.ts already apply for their own loading buttons.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -172,5 +189,63 @@ describe('RadioChat attachments', () => {
     await fileInput.trigger('change');
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  function selectFile(wrapper: ReturnType<typeof mountWithVuetify>) {
+    const fileInput = wrapper.get('input[type="file"]');
+    const file = new File(['fake-image-bytes'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(fileInput.element, 'files', { value: [file] });
+    return fileInput.trigger('change');
+  }
+
+  it('shows the backend error message on a non-ok response, and does not add a message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'unsupported content type "text/plain" for kind "photo"' }),
+    );
+
+    const wrapper = mountWithVuetify(RadioChat);
+    await selectFile(wrapper);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('unsupported content type "text/plain" for kind "photo"');
+    expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('shows a generic error message when the fetch itself throws (network failure), without an unhandled rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network error')));
+
+    const wrapper = mountWithVuetify(RadioChat);
+    await selectFile(wrapper);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Could not reach the server');
+    expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('disables the attach button while the upload is in flight, and re-enables it once done', async () => {
+    let resolveFetch!: (value: { ok: boolean }) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+      ),
+    );
+
+    const wrapper = mountWithVuetify(RadioChat);
+    await selectFile(wrapper);
+    await wrapper.vm.$nextTick();
+
+    // The attach button is the first (icon-only) button; Send/Reconnect (text)
+    // is the second -- see the template's DOM order.
+    const attachButton = wrapper.findAll('button')[0];
+    expect(attachButton.attributes('disabled')).toBeDefined();
+
+    resolveFetch({ ok: true });
+    await flushPromises();
+
+    expect(wrapper.findAll('button')[0].attributes('disabled')).toBeUndefined();
   });
 });
