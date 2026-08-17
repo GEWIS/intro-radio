@@ -35,11 +35,28 @@ const CHILD_STUBS = {
   RequestSong: true,
 };
 
+// Landing renders two real (unstubbed) <v-img>s (the logo, and the GEWIS
+// website link icon). Their images never finish loading under jsdom (no
+// resource loading is implemented), so Vuetify's VImg keeps rescheduling
+// its own dimension poll via window.setTimeout every 100ms for as long as
+// the component stays mounted -- regardless of IntersectionObserver
+// support, since Vuetify's SUPPORTS_INTERSECTION constant is computed once
+// at module-import time, before any beforeEach stub can take effect (a
+// stub here does not make VImg skip this poll). If a wrapper is never
+// unmounted, that poll keeps recurring past the end of the file, and if it
+// fires after the test environment has torn down `window`, it throws
+// "window is not defined" (the poll references `window.setTimeout`
+// directly). Tracking every wrapper mountLanding() creates and unmounting
+// them below lets VImg's own onBeforeUnmount hook clear its timer.
+const mountedWrappers: { unmount: () => void }[] = [];
+
 function mountLanding(startTime: Date, options: { attachTo?: Element } = {}) {
   setActivePinia(createPinia());
   const store = useAppStore();
   store.radio.startTime = startTime;
-  return mountWithVuetify(Landing, { global: { stubs: CHILD_STUBS }, ...options });
+  const wrapper = mountWithVuetify(Landing, { global: { stubs: CHILD_STUBS }, ...options });
+  mountedWrappers.push(wrapper);
+  return wrapper;
 }
 
 describe('Landing', () => {
@@ -47,22 +64,6 @@ describe('Landing', () => {
     ensureTokenMock.mockReset();
     getTokenMock.mockReset().mockReturnValue(null);
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-
-    // Landing renders a real (unstubbed) <v-img> for the logo. Without a
-    // real IntersectionObserver, VImg falls back to polling load state via
-    // setTimeout -- and if that timer is still pending when the test
-    // environment tears down, it fires against a since-destroyed `window`,
-    // throwing "window is not defined" as an unhandled rejection well after
-    // the test itself already passed. Same fix AppFooter.vue.spec.ts already
-    // applies for VFooter's ResizeObserver dependency.
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      },
-    );
 
     // The share button's "Link copied" v-snackbar renders via Vuetify's
     // VOverlay, same as PrivacyPolicy.vue.spec.ts's dialog and
@@ -80,6 +81,7 @@ describe('Landing', () => {
   });
 
   afterEach(() => {
+    for (const wrapper of mountedWrappers.splice(0)) wrapper.unmount();
     vi.unstubAllGlobals();
   });
 
