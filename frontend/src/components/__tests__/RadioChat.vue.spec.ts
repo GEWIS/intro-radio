@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RadioChat from '@/components/RadioChat.vue';
 // Import the mocked module's own `__isClosed` export below (see vi.mock) rather than
 // building the ref via `vi.hoisted()`: `vi.hoisted()` callbacks run before Vite's
@@ -139,5 +139,38 @@ describe('RadioChat', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('RadioChat attachments', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uploads a selected picture and shows it as a sent attachment', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'abc', purpose: 'chat_attachment', kind: 'photo' }) }),
+    );
+
+    const wrapper = mountWithVuetify(RadioChat);
+    const fileInput = wrapper.get('input[type="file"]');
+    const file = new File(['fake-image-bytes'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(fileInput.element, 'files', { value: [file] });
+    await fileInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/media', expect.objectContaining({ method: 'POST' }));
+    expect(wrapper.find('img').exists()).toBe(true);
+  });
+
+  it('does nothing when no file is selected', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const wrapper = mountWithVuetify(RadioChat);
+    const fileInput = wrapper.get('input[type="file"]');
+    Object.defineProperty(fileInput.element, 'files', { value: [] });
+    await fileInput.trigger('change');
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

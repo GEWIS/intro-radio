@@ -4,7 +4,8 @@
       <template v-if="!isClosed">
         <div v-for="(msg, index) in messages" :key="index">
           <strong>{{ msg.from === 'radio' ? 'Radio' : 'You' }}:</strong>
-          {{ msg.content }}
+          <img v-if="msg.mediaUrl" alt="Sent attachment" :src="msg.mediaUrl" style="max-width: 200px; display: block" />
+          <template v-else>{{ msg.content }}</template>
         </div>
       </template>
 
@@ -20,18 +21,30 @@
       <span v-if="radioTyping">Radio is typing...</span>
     </div>
 
-    <v-text-field
-      v-model="input"
-      class="mt-2"
-      :disabled="isClosed"
-      placeholder="Type your message..."
-      @input="notifyTyping"
-      @keydown.enter="sendMessage"
-    />
+    <div class="d-flex align-center mt-2">
+      <v-text-field
+        v-model="input"
+        class="mr-2"
+        :disabled="isClosed"
+        hide-details
+        placeholder="Type your message..."
+        @input="notifyTyping"
+        @keydown.enter="sendMessage"
+      />
 
-    <v-btn v-if="!isClosed" block color="primary" @click="sendMessage">Send</v-btn>
+      <v-btn
+        class="mr-2"
+        :disabled="isClosed"
+        icon="mdi-image-plus"
+        variant="text"
+        @click="fileInput?.click()"
+      />
 
-    <v-btn v-else block color="secondary" @click="connect">Reconnect</v-btn>
+      <input ref="fileInput" accept="image/jpeg,image/png,image/webp" style="display: none" type="file" @change="onFileSelected" />
+    </div>
+
+    <v-btn v-if="!isClosed" block class="mt-2" color="primary" @click="sendMessage">Send</v-btn>
+    <v-btn v-else block class="mt-2" color="secondary" @click="connect">Reconnect</v-btn>
   </v-card>
 </template>
 
@@ -48,6 +61,7 @@ type ChatIncoming = { content: string };
 // only ever has one counterparty.
 type TypingIncoming = { type: 'typing' };
 type Incoming = ChatIncoming | TypingIncoming;
+type SentMessage = { from: string; content: string; mediaUrl?: string };
 
 function isTypingMessage(msg: Incoming): msg is TypingIncoming {
   return (msg as TypingIncoming).type === 'typing';
@@ -60,8 +74,9 @@ const TYPING_DISPLAY_MS = 3000;
 const TYPING_SEND_THROTTLE_MS = 2000;
 
 const input = ref('');
-const messages = ref<{ from: string; content: string }[]>([]);
+const messages = ref<SentMessage[]>([]);
 const chatBox = ref<HTMLDivElement | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
 const radioTyping = ref(false);
 let radioTypingTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTypingSentAt = 0;
@@ -94,6 +109,27 @@ function notifyTyping() {
   if (now - lastTypingSentAt < TYPING_SEND_THROTTLE_MS) return;
   lastTypingSentAt = now;
   send({ type: 'typing' });
+}
+
+async function onFileSelected(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  const token = getToken();
+  if (!token) return;
+
+  const form = new FormData();
+  form.append('token', token);
+  form.append('purpose', 'chat_attachment');
+  form.append('kind', 'photo');
+  form.append('file', file);
+
+  const res = await fetch('/api/v1/media', { method: 'POST', body: form });
+  if (!res.ok) return;
+
+  messages.value.push({ from: 'you', content: '', mediaUrl: URL.createObjectURL(file) });
+  scrollToBottom();
+  if (fileInput.value) fileInput.value.value = '';
 }
 
 function sendMessage() {
