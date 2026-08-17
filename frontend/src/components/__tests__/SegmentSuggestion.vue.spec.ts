@@ -9,9 +9,9 @@ import SegmentSuggestion from '../SegmentSuggestion.vue';
 // the same way RadioChat.vue.spec.ts and AdminChat.vue.spec.ts do for their own
 // media-upload paths, sidesteps both and gives `send()` a token that's always
 // truthy so the upload path under test can actually reach `fetch`.
-const { ensureTokenMock } = vi.hoisted(() => ({ ensureTokenMock: vi.fn() }));
+const { ensureTokenMock, getTokenMock } = vi.hoisted(() => ({ ensureTokenMock: vi.fn(), getTokenMock: vi.fn() }));
 vi.mock('@/composables/useGewisAuth', () => ({
-  useGewisAuth: () => ({ ensureToken: ensureTokenMock }),
+  useGewisAuth: () => ({ ensureToken: ensureTokenMock, getToken: getTokenMock }),
 }));
 
 function mount() {
@@ -36,9 +36,19 @@ function findSendButton(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('button').find((b) => b.text() === 'Send')!;
 }
 
+// toggle() is async now (it awaits ensureToken() before expanding), so the
+// state change from a click doesn't land within trigger()'s own single
+// nextTick the way a synchronous handler's would -- callers need this
+// extra flushPromises() to see the card actually open.
+async function expand(wrapper: ReturnType<typeof mount>) {
+  await wrapper.get('[role="button"]').trigger('click');
+  await flushPromises();
+}
+
 describe('SegmentSuggestion', () => {
   beforeEach(() => {
     ensureTokenMock.mockReset().mockResolvedValue('tok');
+    getTokenMock.mockReset().mockReturnValue('tok');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'abc' }) }));
 
     // The "Send" v-btn switches to a spinner (VProgressCircular) while sending
@@ -67,14 +77,14 @@ describe('SegmentSuggestion', () => {
 
   it('expands to show the photo/voice toggle when clicked', async () => {
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
+    await expand(wrapper);
     expect(wrapper.text()).toContain('Photo');
     expect(wrapper.text()).toContain('Voice');
   });
 
   it('uploads a selected photo with a caption', async () => {
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
+    await expand(wrapper);
 
     await wrapper.get('textarea').setValue('mention this tomorrow');
     await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
@@ -91,20 +101,42 @@ describe('SegmentSuggestion', () => {
     expect(wrapper.text()).toContain('Sent!');
   });
 
-  it('calls ensureToken (rather than silently returning) when there is no stored token', async () => {
+  it('checks for a token before showing the form, not after filling it in', async () => {
+    const wrapper = mount();
+    await expand(wrapper);
+
+    expect(ensureTokenMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('Photo');
+  });
+
+  it('calls ensureToken (rather than expanding) when there is no stored token', async () => {
     ensureTokenMock.mockReset().mockResolvedValue(null);
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
-    await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
-
-    await findSendButton(wrapper).trigger('click');
-    await flushPromises();
+    await expand(wrapper);
 
     expect(ensureTokenMock).toHaveBeenCalledTimes(1);
     // ensureToken resolving null means an auth redirect is in progress (or was
     // declined) -- that already has an implicit user-facing reason, so this
-    // stays a silent bail-out, but it must not reach fetch and must not throw.
+    // just stays collapsed rather than opening a form there's no token to submit.
+    expect(wrapper.text()).not.toContain('Photo');
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('shows an inline error instead of redirecting if the session expires while the card is already open', async () => {
+    const wrapper = mount();
+    await expand(wrapper);
+    await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
+
+    // The token was valid at expand time (that's how the card got open at
+    // all) but has since expired -- send() must not discard the user's
+    // in-progress selection by redirecting the way ensureToken() would.
+    getTokenMock.mockReturnValue(null);
+    await findSendButton(wrapper).trigger('click');
+    await flushPromises();
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('Your session expired');
+    expect(findSendButton(wrapper).attributes('disabled')).toBeUndefined();
   });
 
   it('shows the backend error message on a non-ok response', async () => {
@@ -113,7 +145,7 @@ describe('SegmentSuggestion', () => {
       vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'unsupported content type "text/plain" for kind "photo"' }),
     );
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
+    await expand(wrapper);
     await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
 
     await findSendButton(wrapper).trigger('click');
@@ -126,7 +158,7 @@ describe('SegmentSuggestion', () => {
   it('shows a generic error message when the fetch itself throws (network failure)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network error')));
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
+    await expand(wrapper);
     await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
 
     await findSendButton(wrapper).trigger('click');
@@ -144,7 +176,7 @@ describe('SegmentSuggestion', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const wrapper = mount();
-    await wrapper.get('[role="button"]').trigger('click');
+    await expand(wrapper);
     await selectPhoto(wrapper, new File(['bytes'], 'photo.jpg', { type: 'image/jpeg' }));
 
     await findSendButton(wrapper).trigger('click');
