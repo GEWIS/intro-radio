@@ -57,6 +57,16 @@ type MediaStore struct {
 	mediaDir  string
 }
 
+var (
+	mediaIndexFile = String("MEDIA_FILE", "media.json")
+	// Named mediaFilesDir rather than mediaDir specifically to avoid reading
+	// as the same identifier as MediaStore's own mediaDir field/parameter
+	// (Task 1) -- they're in different scopes so Go has no issue with it,
+	// but two same-named things meaning different things in one package is
+	// worth avoiding for whoever reads this next.
+	mediaFilesDir = String("MEDIA_DIR", "media")
+)
+
 func NewMediaStore(indexPath, mediaDir string) *MediaStore {
 	return &MediaStore{indexPath: indexPath, mediaDir: mediaDir}
 }

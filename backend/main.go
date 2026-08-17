@@ -202,7 +202,7 @@ func agendaHandler(chat *Chat, agenda *Agenda, w http.ResponseWriter, r *http.Re
 // newMux wires up all HTTP and WebSocket routes on a fresh ServeMux, rather
 // than registering on http.DefaultServeMux, so it can be constructed
 // independently in tests.
-func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLog, startedAt time.Time) *http.ServeMux {
+func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLog, media *MediaStore, startedAt time.Time) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", chat.HandleWS)
 	mux.HandleFunc("/api/v1/health", healthHandler)
@@ -225,6 +225,21 @@ func newMux(chat *Chat, agenda *Agenda, metrics *MetricsStore, auditLog *AuditLo
 	})
 	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		statusHandler(chat, metrics, startedAt, audioURL, audioMountPoint, w, r)
+	})
+	mux.HandleFunc("/api/v1/media", func(w http.ResponseWriter, r *http.Request) {
+		mediaUploadHandler(chat, media, w, r)
+	})
+	mux.HandleFunc("/api/v1/media/list", func(w http.ResponseWriter, r *http.Request) {
+		mediaListHandler(chat, media, w, r)
+	})
+	mux.HandleFunc("/api/v1/media/download", func(w http.ResponseWriter, r *http.Request) {
+		mediaDownloadHandler(chat, media, w, r)
+	})
+	mux.HandleFunc("/api/v1/media/delete", func(w http.ResponseWriter, r *http.Request) {
+		mediaDeleteHandler(chat, media, w, r)
+	})
+	mux.HandleFunc("/api/v1/media/wipe", func(w http.ResponseWriter, r *http.Request) {
+		mediaWipeHandler(chat, media, w, r)
 	})
 	return mux
 }
@@ -286,13 +301,25 @@ func main() {
 		log.Warn().Err(err).Str("path", auditLogFile).Msg("could not load audit log; starting with an empty log")
 	}
 
-	srv := newHTTPServer(port, newMux(chat, agenda, metrics, auditLog, startedAt))
+	// Same reasoning as metrics/audit-log above: a corrupt or missing media
+	// index is not worth crash-looping the server over.
+	media := NewMediaStore(mediaIndexFile, mediaFilesDir)
+	if err := media.Load(); err != nil {
+		log.Warn().Err(err).Str("path", mediaIndexFile).Msg("could not load media index; starting with an empty index")
+	}
+
+	srv := newHTTPServer(port, newMux(chat, agenda, metrics, auditLog, media, startedAt))
 
 	// metricsDone stops MetricsStore.Run's ticker loop; it is closed
 	// alongside chat.Shutdown() below so the sampling goroutine doesn't
 	// outlive the rest of a graceful shutdown.
 	metricsDone := make(chan struct{})
 	go metrics.Run(chat, metricsDone)
+
+	// mediaSweepDone stops MediaStore.RunSweep's ticker loop, same reasoning
+	// as metricsDone above.
+	mediaSweepDone := make(chan struct{})
+	go media.RunSweep(mediaSweepDone)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -323,5 +350,6 @@ func main() {
 		// vanish on connected clients.
 		chat.Shutdown()
 		close(metricsDone)
+		close(mediaSweepDone)
 	}
 }

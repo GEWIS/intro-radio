@@ -6,6 +6,8 @@
 agenda.json
 metrics.json
 audit-log.json
+media.json
+media/
 /backend/radiogaga
 /backend/coverage.out
 /backend/coverage-report.md
