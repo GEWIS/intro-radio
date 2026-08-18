@@ -466,6 +466,93 @@ func TestMediaUploadHandlerRejectsMalformedContentType(t *testing.T) {
 	}
 }
 
+func TestMediaUploadHandlerAcceptsVideoMimeTypes(t *testing.T) {
+	// mp4 nearly everywhere, quicktime (.mov) from iOS's own camera/gallery
+	// picker, webm from some Android camera apps.
+	for _, mimeType := range []string{"video/mp4", "video/quicktime", "video/webm"} {
+		t.Run(mimeType, func(t *testing.T) {
+			GEWISSecret = "testsecret"
+			chat := NewChat()
+			store := newTestMediaStore(t)
+			tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+			req := makeUploadRequestWithContentType(t, map[string]string{
+				"token":   tok,
+				"purpose": MediaPurposeSegmentSuggestion,
+				"kind":    MediaKindVideo,
+			}, "file", "clip.mp4", []byte("fake-video-bytes"), mimeType)
+
+			rec := httptest.NewRecorder()
+			mediaUploadHandler(chat, store, rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var got MediaItem
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.MimeType != mimeType {
+				t.Fatalf("expected mime type %q, got %q", mimeType, got.MimeType)
+			}
+		})
+	}
+}
+
+func TestMediaUploadHandlerRejectsVideoForChatAttachment(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+	// Video is only offered as a segment suggestion -- a chat_attachment
+	// carrying kind=video must be rejected server-side, not just omitted
+	// from the chat UI's file picker.
+	req := makeUploadRequestWithContentType(t, map[string]string{
+		"token":   tok,
+		"purpose": MediaPurposeChatAttachment,
+		"kind":    MediaKindVideo,
+	}, "file", "clip.mp4", []byte("fake-video-bytes"), "video/mp4")
+
+	rec := httptest.NewRecorder()
+	mediaUploadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 rejecting video for chat_attachment, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(store.List()) != 0 {
+		t.Fatalf("expected nothing to be stored")
+	}
+}
+
+func TestMediaUploadHandlerRejectsOversizedVideo(t *testing.T) {
+	GEWISSecret = "testsecret"
+	chat := NewChat()
+	store := newTestMediaStore(t)
+	tok := makeToken(t, GEWISSecret, 1337, "Ada", "Lovelace", time.Minute)
+
+	// Distinct from TestMediaUploadHandlerRejectsOversizedFile (photo's own
+	// cap) -- video's 50MB cap is a different constant, and the generic
+	// maxUploadBytes reader must be sized to let a request this size
+	// through far enough to hit video's own kind-specific check.
+	tooBig := bytes.Repeat([]byte("x"), maxVideoBytes+1)
+	req := makeUploadRequestWithContentType(t, map[string]string{
+		"token":   tok,
+		"purpose": MediaPurposeSegmentSuggestion,
+		"kind":    MediaKindVideo,
+	}, "file", "clip.mp4", tooBig, "video/mp4")
+
+	rec := httptest.NewRecorder()
+	mediaUploadHandler(chat, store, rec, req)
+
+	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected a 4xx rejection for an oversized video, got %d", rec.Code)
+	}
+	if len(store.List()) != 0 {
+		t.Fatalf("expected nothing to be stored")
+	}
+}
+
 func TestMediaUploadHandlerChatAttachmentBroadcastsOnlyToRadios(t *testing.T) {
 	GEWISSecret = "testsecret"
 	RADIOChatKey = "correct-key"

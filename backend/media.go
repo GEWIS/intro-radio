@@ -43,6 +43,7 @@ const (
 
 	MediaKindPhoto = "photo"
 	MediaKindVoice = "voice"
+	MediaKindVideo = "video"
 )
 
 // MediaStore holds the metadata index (small, always fully loaded) and
@@ -269,11 +270,13 @@ func (m *MediaStore) RunSweep(done <-chan struct{}) {
 const (
 	maxPhotoBytes = 15 * 1024 * 1024 // 15MB
 	maxVoiceBytes = 10 * 1024 * 1024 // 10MB
+	maxVideoBytes = 50 * 1024 * 1024 // 50MB, enough for a short (30-60s) clip
 	// maxUploadBytes bounds the request body http.MaxBytesReader allows
-	// before either per-kind check below even runs -- the larger of the two
-	// kind-specific caps, so a legitimate large photo isn't rejected by the
-	// generic reader before reaching the kind-specific message.
-	maxUploadBytes = maxPhotoBytes
+	// before any per-kind check below even runs -- the largest of the
+	// kind-specific caps, so a legitimate large upload of that kind isn't
+	// rejected by the generic reader before reaching the kind-specific
+	// message.
+	maxUploadBytes = maxVideoBytes
 )
 
 var allowedPhotoMimeTypes = map[string]bool{
@@ -287,6 +290,15 @@ var allowedVoiceMimeTypes = map[string]bool{
 	"audio/ogg":  true,
 	"audio/mpeg": true,
 	"audio/mp4":  true,
+}
+
+// allowedVideoMimeTypes covers what a phone's own camera/gallery picker
+// actually produces -- mp4 nearly everywhere, quicktime (.mov) from iOS
+// specifically, webm from some Android camera apps.
+var allowedVideoMimeTypes = map[string]bool{
+	"video/mp4":       true,
+	"video/quicktime": true,
+	"video/webm":      true,
 }
 
 // MediaBroadcast notifies connected radios that a segment_suggestion item
@@ -345,8 +357,16 @@ func mediaUploadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r 
 		http.Error(w, "invalid purpose", http.StatusBadRequest)
 		return
 	}
-	if kind != MediaKindPhoto && kind != MediaKindVoice {
+	if kind != MediaKindPhoto && kind != MediaKindVoice && kind != MediaKindVideo {
 		http.Error(w, "invalid kind", http.StatusBadRequest)
+		return
+	}
+	// Video is only offered as a segment suggestion (see the design
+	// decision for why) -- reject it server-side too, not just by omitting
+	// it from the chat-attachment UI, so a 50MB clip can't land in the
+	// 48h-ephemeral chat_attachment store via a hand-crafted request.
+	if kind == MediaKindVideo && purpose != MediaPurposeSegmentSuggestion {
+		http.Error(w, "video uploads are only supported for segment suggestions", http.StatusBadRequest)
 		return
 	}
 
@@ -372,9 +392,13 @@ func mediaUploadHandler(chat *Chat, store *MediaStore, w http.ResponseWriter, r 
 	}
 	maxBytes := int64(maxPhotoBytes)
 	allowed := allowedPhotoMimeTypes
-	if kind == MediaKindVoice {
+	switch kind {
+	case MediaKindVoice:
 		maxBytes = maxVoiceBytes
 		allowed = allowedVoiceMimeTypes
+	case MediaKindVideo:
+		maxBytes = maxVideoBytes
+		allowed = allowedVideoMimeTypes
 	}
 	if !allowed[mimeType] {
 		http.Error(w, fmt.Sprintf("unsupported content type %q for kind %q", mimeType, kind), http.StatusBadRequest)

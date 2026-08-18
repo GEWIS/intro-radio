@@ -33,7 +33,7 @@ type TypingIncoming = { type: 'typing'; from: string; to?: string };
 // this on the same socket whenever a segment_suggestion item is created or
 // removed (see backend/media.go's MediaBroadcast) -- purely a "refetch your
 // list" signal for the Media tab, never addressed to a specific listener.
-type MediaIncoming = { type: 'media'; event: 'new' | 'deleted'; id: string; kind?: 'photo' | 'voice' };
+type MediaIncoming = { type: 'media'; event: 'new' | 'deleted'; id: string; kind?: 'photo' | 'voice' | 'video' };
 type Incoming = Outgoing | PresenceIncoming | TypingIncoming | MediaIncoming;
 
 function isPresenceMessage(msg: Incoming): msg is PresenceIncoming {
