@@ -4,8 +4,8 @@
       <template v-if="!isClosed">
         <div v-for="(msg, index) in messages" :key="index">
           <strong>{{ msg.from === 'radio' ? 'Radio' : 'You' }}:</strong>
-          <img v-if="msg.mediaUrl" alt="Sent attachment" :src="msg.mediaUrl" style="max-width: 200px; display: block" />
-          <template v-else>{{ msg.content }}</template>
+          <img v-if="msg.mediaUrl" alt="Sent attachment" class="ml-2" :src="msg.mediaUrl" style="max-width: 200px; display: block" />
+          <span v-else class="ml-2">{{ msg.content }}</span>
         </div>
       </template>
 
