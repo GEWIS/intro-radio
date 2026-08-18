@@ -75,10 +75,11 @@ describe('SegmentSuggestion', () => {
     expect(wrapper.text()).not.toContain('Send');
   });
 
-  it('expands to show the photo/voice toggle when clicked', async () => {
+  it('expands to show the photo/video/voice toggle when clicked', async () => {
     const wrapper = mount();
     await expand(wrapper);
     expect(wrapper.text()).toContain('Photo');
+    expect(wrapper.text()).toContain('Video');
     expect(wrapper.text()).toContain('Voice');
   });
 
@@ -98,6 +99,23 @@ describe('SegmentSuggestion', () => {
     expect(form.get('purpose')).toBe('segment_suggestion');
     expect(form.get('kind')).toBe('photo');
     expect(form.get('caption')).toBe('mention this tomorrow');
+    expect(wrapper.text()).toContain('Sent!');
+  });
+
+  it('uploads a selected video clip', async () => {
+    const wrapper = mount();
+    await expand(wrapper);
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Video')!.trigger('click');
+    await selectPhoto(wrapper, new File(['bytes'], 'clip.mp4', { type: 'video/mp4' }));
+
+    await findSendButton(wrapper).trigger('click');
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/media', expect.objectContaining({ method: 'POST' }));
+    const call = (fetch as any).mock.calls[0][1];
+    const form = call.body as FormData;
+    expect(form.get('kind')).toBe('video');
     expect(wrapper.text()).toContain('Sent!');
   });
 

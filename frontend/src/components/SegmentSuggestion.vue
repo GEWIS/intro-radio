@@ -14,7 +14,7 @@
 
         <div>
           <div class="text-subtitle-1 font-weight-medium">Something for tomorrow's show?</div>
-          <div class="text-body-2 text-medium-emphasis">Share a photo or voice memo, radio isn't live yet? No problem.</div>
+          <div class="text-body-2 text-medium-emphasis">Share a photo, video, or voice memo, radio isn't live yet? No problem.</div>
         </div>
       </div>
 
@@ -31,11 +31,12 @@
         <v-card-text>
           <v-btn-toggle v-model="kind" class="mb-4" color="primary" divided mandatory @click.stop>
             <v-btn value="photo">Photo</v-btn>
+            <v-btn value="video">Video</v-btn>
             <v-btn value="voice">Voice</v-btn>
           </v-btn-toggle>
 
-          <div v-if="kind === 'photo'">
-            <input ref="fileInput" accept="image/jpeg,image/png,image/webp" type="file" @change="onFileSelected" />
+          <div v-if="kind === 'photo' || kind === 'video'">
+            <input ref="fileInput" :accept="fileAccept" type="file" @change="onFileSelected" />
           </div>
 
           <div v-else>
@@ -81,7 +82,7 @@ import { useGewisAuth } from '@/composables/useGewisAuth';
 const { ensureToken, getToken } = useGewisAuth();
 
 const expanded = ref(false);
-const kind = ref<'photo' | 'voice'>('photo');
+const kind = ref<'photo' | 'voice' | 'video'>('photo');
 const caption = ref('');
 const sending = ref(false);
 const sent = ref(false);
@@ -89,6 +90,10 @@ const errorMessage = ref<string | null>(null);
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File | null>(null);
+// mp4 nearly everywhere, quicktime (.mov) from iOS's own camera/gallery
+// picker, webm from some Android camera apps -- mirrors the backend's own
+// allowedVideoMimeTypes in backend/media.go.
+const fileAccept = computed(() => (kind.value === 'video' ? 'video/mp4,video/quicktime,video/webm' : 'image/jpeg,image/png,image/webp'));
 
 const recordingState = ref<'idle' | 'recording' | 'preview'>('idle');
 const recordedBlob = ref<Blob | null>(null);
@@ -159,7 +164,7 @@ onBeforeUnmount(() => {
 });
 
 const canSend = computed(() => {
-  if (kind.value === 'photo') return selectedFile.value !== null;
+  if (kind.value === 'photo' || kind.value === 'video') return selectedFile.value !== null;
   return recordedBlob.value !== null;
 });
 
@@ -186,7 +191,7 @@ async function send() {
     form.append('kind', kind.value);
     if (caption.value.trim()) form.append('caption', caption.value.trim());
 
-    if (kind.value === 'photo' && selectedFile.value) {
+    if ((kind.value === 'photo' || kind.value === 'video') && selectedFile.value) {
       form.append('file', selectedFile.value);
     } else if (kind.value === 'voice' && recordedBlob.value) {
       form.append('file', recordedBlob.value, 'voice-memo.webm');

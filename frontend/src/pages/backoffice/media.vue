@@ -62,6 +62,13 @@
                   style="max-width: 120px; max-height: 120px; border-radius: 4px"
                 />
 
+                <video
+                  v-else-if="item.kind === 'video' && mediaUrls[item.id]"
+                  controls
+                  :src="mediaUrls[item.id]"
+                  style="max-width: 200px; max-height: 160px"
+                />
+
                 <audio v-else-if="item.kind === 'voice' && mediaUrls[item.id]" controls :src="mediaUrls[item.id]" />
                 <div v-else class="text-medium-emphasis">Loading...</div>
 
@@ -110,7 +117,7 @@ import { useChatStore } from '@/stores/chat';
 type MediaItem = {
   id: string;
   purpose: string;
-  kind: 'photo' | 'voice';
+  kind: 'photo' | 'voice' | 'video';
   senderLidnr: number;
   senderGivenName: string;
   senderFamilyName: string;

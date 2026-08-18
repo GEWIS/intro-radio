@@ -81,6 +81,33 @@ describe('backoffice/media.vue', () => {
     expect(wrapper.text()).toContain('No submissions');
   });
 
+  it('shows a video player for a video submission', async () => {
+    const videoBlob = new Blob(['fake-video-bytes'], { type: 'video/mp4' });
+    setActivePinia(createPinia());
+    localStorage.setItem('RADIO_ADMIN_KEY', 'stored-key');
+    validateRadioKeyQuickMock.mockResolvedValue(true);
+    ensureTokenMock.mockResolvedValue('a-token');
+
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/v1/media/list') {
+        return Promise.resolve(jsonResponse([suggestion({ id: 'v1', kind: 'video', mimeType: 'video/mp4' })]));
+      }
+      if (url === '/api/v1/media/download') {
+        return Promise.resolve({ ok: true, blob: async () => videoBlob });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const wrapper = mount(Media);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('video').exists()).toBe(true);
+    expect(wrapper.find('img').exists()).toBe(false);
+    expect(wrapper.find('audio').exists()).toBe(false);
+  });
+
   it('deletes an item and refetches the list', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/v1/media/list') return Promise.resolve(jsonResponse([suggestion()]));
