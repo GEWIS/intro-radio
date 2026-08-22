@@ -14,7 +14,7 @@ jobs:
   release-frontend:
     needs: versioning
     if: ${{ needs.versioning.outputs.next-version != '' }}
-    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.6
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.17.0
     with:
       projects: '["frontend"]'
       dockerfiles: '["frontend/Dockerfile"]'
@@ -30,7 +30,7 @@ jobs:
   release-nginx:
     needs: versioning
     if: ${{ needs.versioning.outputs.next-version != '' }}
-    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.6
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.17.0
     with:
       projects: '["frontend/nginx"]'
       dockerfiles: '["frontend/nginx/Dockerfile"]'
@@ -40,7 +40,7 @@ jobs:
   release-backend:
     needs: versioning
     if: ${{ needs.versioning.outputs.next-version != '' }}
-    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.16.6
+    uses: GEWIS/actions/.github/workflows/docker-release-ghcr.yml@v1.17.0
     with:
       projects: '["backend"]'
       dockerfiles: '["backend/Dockerfile"]'
