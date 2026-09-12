@@ -3017,10 +3017,10 @@ he@^1.2.0:
   resolved "https://registry.yarnpkg.com/he/-/he-1.2.0.tgz#84ae65fa7eafb165fddb61566ae14baf05664f0f"
   integrity sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==
 
-hls.js@^1.7.1:
-  version "1.7.1"
-  resolved "https://registry.yarnpkg.com/hls.js/-/hls.js-1.7.1.tgz#dcaa09ffb6347cdf06fc41dada2118f0d02ab5fc"
-  integrity sha512-DlzIkeBAS9IIQ432k3BUf3HlwbsR0+trB1i2lDdN2gUkNkrehFurh0/48M5c1/EjlDkdGng1gwZIpwyPxvdZ/g==
+hls.js@^1.7.2:
+  version "1.7.2"
+  resolved "https://registry.yarnpkg.com/hls.js/-/hls.js-1.7.2.tgz#8d414feeccffb9e91f30059bdf95aa3fe6376f2a"
+  integrity sha512-CW/pPvSOFIRsosbwxrYaE9ERmpTo5fbTqL7wCvuCFlqW1Bmb1K5fXsY7yiH95rmlr4rVuA7UXHbM/cIXQ6AXwg==
 
 hookable@^5.5.3:
   version "5.5.3"
@@ -5188,10 +5188,10 @@ vue@^3.5.42:
     "@vue/server-renderer" "3.5.42"
     "@vue/shared" "3.5.42"
 
-vuetify@^3.13.2:
-  version "3.13.2"
-  resolved "https://registry.yarnpkg.com/vuetify/-/vuetify-3.13.2.tgz#980d01c253a853b5d91a97e587481a7064bf76f8"
-  integrity sha512-CuBtJ2/lKo4s6vDmDr/oJ+77oRUb7X8goUhTKZG/qSqBkL5J2EzeBEhaZ57ZSLcYnnViWHObuVjHjRFmVzx55Q==
+vuetify@^3.13.3:
+  version "3.13.3"
+  resolved "https://registry.yarnpkg.com/vuetify/-/vuetify-3.13.3.tgz#1de9e4faa11c002f428ec9f0ccbee916ce1c671a"
+  integrity sha512-IFNGRqvL+UQOsAToiKwPjJ0FmMv06Kr6nFTsWkvCNm0mLTeld9EQSAUGOXf50R0OxPtocY5KwajNVdzp3tg2lg==
 
 w3c-xmlserializer@^5.0.0:
   version "5.0.0"
