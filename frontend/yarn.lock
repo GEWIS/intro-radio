@@ -2089,10 +2089,10 @@ doctrine@^2.1.0:
   dependencies:
     esutils "^2.0.2"
 
-dompurify@^3.4.14:
-  version "3.4.14"
-  resolved "https://registry.yarnpkg.com/dompurify/-/dompurify-3.4.14.tgz#a789edb2c7bcdb69a93713a34edb7e0a5245d8c9"
-  integrity sha512-dVoH9z+MY+C9IilgGCk3YfFqjLi3fChm2OiKJMzh6axrJ5qwxqWaZamgmHrpv22CN/KdbZJuGEGgfQoL00LTdg==
+dompurify@^3.4.15:
+  version "3.4.15"
+  resolved "https://registry.yarnpkg.com/dompurify/-/dompurify-3.4.15.tgz#30351b34513894f428c13bddb28bff0a027ae804"
+  integrity sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==
   optionalDependencies:
     "@types/trusted-types" "^2.0.7"
 
@@ -3017,10 +3017,10 @@ he@^1.2.0:
   resolved "https://registry.yarnpkg.com/he/-/he-1.2.0.tgz#84ae65fa7eafb165fddb61566ae14baf05664f0f"
   integrity sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==
 
-hls.js@^1.7.2:
-  version "1.7.2"
-  resolved "https://registry.yarnpkg.com/hls.js/-/hls.js-1.7.2.tgz#8d414feeccffb9e91f30059bdf95aa3fe6376f2a"
-  integrity sha512-CW/pPvSOFIRsosbwxrYaE9ERmpTo5fbTqL7wCvuCFlqW1Bmb1K5fXsY7yiH95rmlr4rVuA7UXHbM/cIXQ6AXwg==
+hls.js@^1.7.3:
+  version "1.7.3"
+  resolved "https://registry.yarnpkg.com/hls.js/-/hls.js-1.7.3.tgz#79a3338dd2e78fe63fc2ba6cfebdf5e34495537a"
+  integrity sha512-MsPlx6yVW4Qv4C7mEVou4/gk/5cN2dVxOTnrNjPSmyH2f0Ln+/UkG10Ax1PE6OvrmTVPKgQYozTtBaPOuCzq7A==
 
 hookable@^5.5.3:
   version "5.5.3"
@@ -5188,10 +5188,10 @@ vue@^3.5.42:
     "@vue/server-renderer" "3.5.42"
     "@vue/shared" "3.5.42"
 
-vuetify@^3.13.3:
-  version "3.13.3"
-  resolved "https://registry.yarnpkg.com/vuetify/-/vuetify-3.13.3.tgz#1de9e4faa11c002f428ec9f0ccbee916ce1c671a"
-  integrity sha512-IFNGRqvL+UQOsAToiKwPjJ0FmMv06Kr6nFTsWkvCNm0mLTeld9EQSAUGOXf50R0OxPtocY5KwajNVdzp3tg2lg==
+vuetify@^3.13.4:
+  version "3.13.4"
+  resolved "https://registry.yarnpkg.com/vuetify/-/vuetify-3.13.4.tgz#de299c93422a829efc8e7ba182420a43073ee6d9"
+  integrity sha512-0Zxy1KrMf/saCPD/YvwMduzOsAAYkZKW0wRPiRLlgj7Ti3FqNoAvnxY+lLK9YD/tAwfOasI7f8Q51BbsS24g4Q==
 
 w3c-xmlserializer@^5.0.0:
   version "5.0.0"
