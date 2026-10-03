@@ -31,11 +31,11 @@
     "@fontsource/gloria-hallelujah": "5.3.0",
     "@fontsource/roboto": "5.3.0",
     "@mdi/font": "7.4.47",
-    "dompurify": "^3.4.15",
+    "dompurify": "^3.4.16",
     "hls.js": "^1.7.3",
     "marked": "^16.4.2",
     "vue": "^3.5.43",
-    "vuetify": "^3.13.4"
+    "vuetify": "^3.13.5"
   },
   "devDependencies": {
     "@gewis/eslint-config-typescript": "^2.4.0",
